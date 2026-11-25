@@ -122,17 +122,20 @@ function desenharCard2(p,R,G,info){
   }
   if(G.length){
     ctx.fillStyle="#13262b";ctx.font=`800 32px ${F}`;ctx.fillText("💙 ATENÇÃO ESPECIAL",M,y+8);y+=30;
-    const cw=(W-2*M-20)/2, tl=cw-40;
-    const alturaGrupo=g=>{ctx.font=`800 25px ${B}`;const hn=quebrar(ctx,g.nome,cw-100).length*30;ctx.font=`500 21px ${B}`;
-      return Math.max(64,hn+30)+g.lista.reduce((s,t)=>s+quebrar(ctx,t,tl-18).length*27+10,0)+16};
+    // ícone num círculo à esquerda; título e orientação numa coluna só, alinhados à direita do ícone
+    const cw=(W-2*M-20)/2, PAD=22, IC=56, TX=PAD+IC+18, TW=cw-TX-PAD, LT=30, LB=28;
+    const medir=g=>{ctx.font=`800 25px ${B}`;const nt=quebrar(ctx,g.nome,TW).length;ctx.font=`500 22px ${B}`;
+      const nb=g.lista.reduce((s,t)=>s+quebrar(ctx,t,TW).length,0);
+      const base=PAD+36, fimTexto=base+(nt-1)*LT+34+(nb-1)*LB+10;
+      return Math.max(PAD*2+IC, fimTexto+PAD-4)};
     for(let i=0;i<G.length;i+=2){
-      const par=G.slice(i,i+2), h=Math.max(...par.map(alturaGrupo));
+      const par=G.slice(i,i+2), h=Math.max(...par.map(medir));
       par.forEach((g,j)=>{const x=M+j*(cw+20);
-        ctx.fillStyle="#dff0f0";rr(ctx,x,y,cw,h,18);ctx.fill();
-        ctx.font=`44px ${E}`;ctx.fillText(g.emoji,x+18,y+56);
-        ctx.fillStyle="#0b4f55";ctx.font=`800 25px ${B}`;const hn=texto(ctx,g.nome,x+82,y+42,cw-100,30);
-        let yy=y+Math.max(64,hn+30)+14;ctx.fillStyle="#2e4247";ctx.font=`500 21px ${B}`;
-        g.lista.forEach(t=>{ctx.fillText("•",x+20,yy);yy+=texto(ctx,t,x+38,yy,tl-18,27)+10});
+        ctx.fillStyle="#e3f1f1";rr(ctx,x,y,cw,h,20);ctx.fill();
+        desenharIcone(ctx,g.id,x+PAD,y+PAD,IC);
+        ctx.fillStyle="#0b4f55";ctx.font=`800 25px ${B}`;const ht=texto(ctx,g.nome,x+TX,y+PAD+36,TW,LT);
+        ctx.fillStyle="#2e4247";ctx.font=`500 22px ${B}`;let yy=y+PAD+36+ht-LT+34;
+        g.lista.forEach(t=>{yy+=texto(ctx,t,x+TX,yy,TW,LB)});
       });
       y+=h+16;
     }

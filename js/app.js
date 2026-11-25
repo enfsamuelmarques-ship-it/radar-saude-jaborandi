@@ -236,16 +236,16 @@ function renderEpoca(iso){
 }
 function renderGrupos(G){
   const ativos=new Set(G.map(g=>g.id));
-  $("grupos-chips").innerHTML=GRUPOS.map(g=>`<button type="button" class="chip-g${ativos.has(g.id)?"":" apagado"}" data-g="${g.id}" aria-pressed="${S.grupoAberto===g.id}"><span aria-hidden="true">${g.emoji}</span>${esc(g.nome)}</button>`).join("");
+  $("grupos-chips").innerHTML=GRUPOS.map(g=>`<button type="button" class="chip-g${ativos.has(g.id)?"":" apagado"}" data-g="${g.id}" aria-pressed="${S.grupoAberto===g.id}">${iconeSVG(g.id,22)}${esc(g.nome)}</button>`).join("");
   $("grupos-chips").querySelectorAll("[data-g]").forEach(b=>b.onclick=()=>{S.grupoAberto=S.grupoAberto===b.dataset.g?null:b.dataset.g;renderGrupos(G)});
   const sel=S.grupoAberto&&GRUPOS.find(g=>g.id===S.grupoAberto);
   if(sel){
     const nomes={tempestade:"⛈️ Tempestade",chuva:"🌧️ Chuva",calor:"🌡️ Calor",seco:"🏜️ Ar seco",base:"📋 No dia a dia"};
     const at=tiposAtivos(avaliarRiscos(prevDoDia(S.dia),S.dia===0?S.avisos:avisosDoDia(S.avisos,S.prev.daily.time[S.dia]),S.dia===0?S.radar:null));
-    $("grupos").innerHTML=`<article class="grupo aberto"><header><span class="ge">${sel.emoji}</span><h3>${esc(sel.nome)}</h3></header>
+    $("grupos").innerHTML=`<article class="grupo aberto"><header><span class="ge">${iconeSVG(sel.id,40)}</span><h3>${esc(sel.nome)}</h3></header>
       <ul class="todas">${Object.entries(sel.dicas).map(([k,lista])=>[k,escolher(lista,S.prev.daily.time[S.dia],GRUPOS.indexOf(sel))]).map(([k,v])=>`<li class="${at.has(k)?"ativo":""}"><b>${nomes[k]||k}${at.has(k)?" · risco agora":""}</b>${esc(v)}</li>`).join("")}</ul></article>`;
   } else {
-    $("grupos").innerHTML=G.map(g=>`<article class="grupo"><header><span class="ge">${g.emoji}</span><h3>${esc(g.nome)}</h3></header><p>${esc(g.lista[0])}</p></article>`).join("");
+    $("grupos").innerHTML=G.map(g=>`<article class="grupo"><header><span class="ge">${iconeSVG(g.id,40)}</span><h3>${esc(g.nome)}</h3></header><p>${esc(g.lista[0])}</p></article>`).join("");
   }
 }
 
