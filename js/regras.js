@@ -37,37 +37,35 @@ function avaliarRiscos(p,avisos,radar){
   const h=dia(0), a=dia(1);
   const pior=(f)=>Math.max(f(h),f(a));
   const quandoTxt=(f,lim)=>[f(h)>=lim?"hoje":null,f(a)>=lim?"amanhã":null].filter(Boolean).join(" e ");
+  // versão das dicas do dia (rodízio, ver js/orientacoes.js)
+  const iso=d.time[0], D=(k,n)=>escolher(DICAS_RISCO[k],iso,n);
 
   // Tempestade
   const temp=Math.max(h.code>=95?2:0,a.code>=95?2:0, avisos.some(x=>/tempestade/i.test(x.descricao))?2:0);
-  if(temp) R.push({nivel:"laranja",rotulo:"Alerta",titulo:"Tempestades e raios",quando:"",dicas:[
-    "Fique longe de árvores, torres e campo aberto","Tire os aparelhos da tomada durante os raios"]});
+  if(temp) R.push({nivel:"laranja",rotulo:"Alerta",titulo:"Tempestades e raios",quando:"",dicas:D("tempestade",0)});
   // Chuva
   const mm=pior(x=>x.chuva);
   if(mm>=30||avisos.some(x=>/chuva/i.test(x.descricao))) R.push({nivel:mm>=50?"vermelho":"laranja",rotulo:mm>=50?"Alerta máximo":"Alerta",
-    titulo:"Chuva forte",quando:quandoTxt(x=>x.chuva,30)||"previsto",dicas:[
-    "Não atravesse ruas ou córregos alagados","Água de enchente transmite leptospirose: use botas e luvas"]});
-  else if(mm>=10) R.push({nivel:"amarelo",rotulo:"Atenção",titulo:"Chuva moderada",quando:quandoTxt(x=>x.chuva,10),dicas:["Atenção a pontos de alagamento e pistas escorregadias"]});
+    titulo:"Chuva forte",quando:quandoTxt(x=>x.chuva,30)||"previsto",dicas:D("chuvaForte",1)});
+  else if(mm>=10) R.push({nivel:"amarelo",rotulo:"Atenção",titulo:"Chuva moderada",quando:quandoTxt(x=>x.chuva,10),dicas:D("chuvaModerada",1)});
   // Dengue (após chuva + calor)
   const chuva3=d.precipitation_sum.slice(0,3).reduce((s,v)=>s+(v||0),0);
-  if(chuva3>=5&&pior(x=>x.tmax)>=25) R.push({nivel:"laranja",rotulo:"Atenção",titulo:"Dengue: água parada após a chuva",quando:"próximos dias",dicas:[
-    "Depois da chuva, esvazie vasos, pneus, baldes e calhas","Febre e dor no corpo: procure a unidade de saúde"]});
+  if(chuva3>=5&&pior(x=>x.tmax)>=25) R.push({nivel:"laranja",rotulo:"Atenção",titulo:"Dengue: água parada após a chuva",quando:"próximos dias",dicas:D("dengue",2)});
   // Calor
   const sens=pior(x=>x.sens), tmax=pior(x=>x.tmax);
-  if(sens>=38||tmax>=36) R.push({nivel:"vermelho",rotulo:"Alerta",titulo:"Calor intenso",quando:quandoTxt(x=>Math.max(x.sens-3,x.tmax),35),dicas:[
-    "Beba água mesmo sem sede","Evite o sol e o esforço físico das 10h às 16h","Tontura e confusão podem ser insolação: procure atendimento"]});
-  else if(sens>=35||tmax>=33) R.push({nivel:"amarelo",rotulo:"Atenção",titulo:"Calor",quando:quandoTxt(x=>Math.max(x.sens-1,x.tmax),33),dicas:["Beba água e use roupas leves"]});
+  if(sens>=38||tmax>=36) R.push({nivel:"vermelho",rotulo:"Alerta",titulo:"Calor intenso",quando:quandoTxt(x=>Math.max(x.sens-3,x.tmax),35),dicas:D("calorIntenso",0)});
+  else if(sens>=35||tmax>=33) R.push({nivel:"amarelo",rotulo:"Atenção",titulo:"Calor",quando:quandoTxt(x=>Math.max(x.sens-1,x.tmax),33),dicas:D("calor",0)});
   // Umidade
   const umin=Math.min(h.umid,a.umid);
   if(umin<30){const n=umin<12?["vermelho","Emergência"]:umin<20?["laranja","Alerta"]:["amarelo","Atenção"];
-    R.push({nivel:n[0],rotulo:n[1],titulo:"Ar seco (umidade "+fmt(umin)+"%)",quando:"",dicas:["Beba água e use soro no nariz e nos olhos","Evite exercício ao ar livre das 10h às 16h"]});}
+    R.push({nivel:n[0],rotulo:n[1],titulo:"Ar seco (umidade "+fmt(umin)+"%)",quando:"",dicas:D("arSeco",1)});}
   // Vento
   const raj=pior(x=>x.raj);
-  if(raj>=60) R.push({nivel:"laranja",rotulo:"Alerta",titulo:"Ventos fortes (até "+fmt(raj)+" km/h)",quando:quandoTxt(x=>x.raj,60),dicas:["Fique longe de árvores, postes e fios caídos"]});
+  if(raj>=60) R.push({nivel:"laranja",rotulo:"Alerta",titulo:"Ventos fortes (até "+fmt(raj)+" km/h)",quando:quandoTxt(x=>x.raj,60),dicas:D("vento",2)});
   // UV
   const uv=pior(x=>x.uv);
-  if(uv>=8) R.push({nivel:uv>=11?"vermelho":"laranja",rotulo:uv>=11?"Extremo":"Muito alto",titulo:"Índice UV "+fmt(uv),quando:"",dicas:["Use protetor solar, chapéu e óculos e evite o sol das 10h às 16h"]});
-  if(!R.length) R.push({nivel:"verde",rotulo:"Sem alertas",titulo:"Tempo sem riscos relevantes",quando:"",dicas:["Mantenha a hidratação e os cuidados com a água parada"]});
+  if(uv>=8) R.push({nivel:uv>=11?"vermelho":"laranja",rotulo:uv>=11?"Extremo":"Muito alto",titulo:"Índice UV "+fmt(uv),quando:"",dicas:D("uv",0)});
+  if(!R.length) R.push({nivel:"verde",rotulo:"Sem alertas",titulo:"Tempo sem riscos relevantes",quando:"",dicas:D("tranquilo",0)});
   return R;
 }
 
@@ -82,58 +80,7 @@ function tiposAtivos(R){const t=new Set();R.forEach(r=>{const s=r.titulo.toLower
   if(/tempestade/.test(s))t.add("tempestade"); if(/chuva/.test(s))t.add("chuva"); if(/calor/.test(s))t.add("calor");
   if(/seco/.test(s))t.add("seco"); if(/vento/.test(s))t.add("vento"); if(/dengue/.test(s))t.add("dengue")});return t}
 
-/* Orientações por grupo vulnerável, ligadas ao risco do dia */
-const GRUPOS=[
- {id:"hasdm",emoji:"🫀",nome:"Hipertensos e diabéticos",dicas:{
-   calor:"Não pare os remédios. Beba água, meça a pressão e a glicemia e guarde a insulina longe do sol",
-   seco:"Beba água ao longo do dia e meça a pressão e a glicemia",
-   chuva:"Guarde remédios e insulina em local seco e não ande descalço na água",
-   tempestade:"Deixe os remédios à mão. Se faltar energia, guarde a insulina em local fresco, longe do sol",
-   base:"Tome os remédios no horário e acompanhe a pressão e a glicemia"}},
- {id:"tea",emoji:"♾️",nome:"Pessoas autistas (TEA)",dicas:{
-   tempestade:"Trovões e falta de luz podem assustar: tenha abafador, lanterna e um cantinho calmo",
-   chuva:"Se a rotina mudar por causa da chuva, avise antes",
-   calor:"Ofereça água em horários fixos, sem esperar que peçam",
-   seco:"Ofereça água em horários fixos, sem esperar que peçam",
-   base:"Mantenha a rotina e avise antes sobre mudanças"}},
- {id:"idoso",emoji:"👵",nome:"Idosos",dicas:{
-   calor:"O idoso sente menos sede: ofereça água várias vezes ao dia",
-   seco:"O idoso sente menos sede: ofereça água várias vezes ao dia",
-   chuva:"Com o piso molhado, redobre o cuidado para evitar quedas",
-   tempestade:"Familiares e vizinhos: liguem para o idoso que mora sozinho",
-   base:"Familiares e vizinhos: fiquem atentos ao idoso que mora sozinho"}},
- {id:"crianca",emoji:"👶",nome:"Gestantes, bebês e crianças",dicas:{
-   calor:"Use roupas leves, fique na sombra e beba água. Bebês: ofereça o peito mais vezes",
-   seco:"Ofereça água e use soro no nariz das crianças",
-   chuva:"Não deixe as crianças brincarem na enxurrada",
-   tempestade:"Durante os raios, mantenha as crianças dentro de casa",
-   base:"Mantenha as vacinas em dia"}},
- {id:"resp",emoji:"🫁",nome:"Asma e DPOC",dicas:{
-   seco:"Tenha a bombinha sempre por perto e use soro no nariz",
-   calor:"Tenha a bombinha à mão e evite esforço no calor",
-   chuva:"Areje a casa e limpe o mofo",
-   tempestade:"Tenha a bombinha à mão. Quem usa nebulizador precisa de um plano para falta de luz",
-   base:"Use o remédio de controle todos os dias"}},
- {id:"eletro",emoji:"🔌",nome:"Acamados e uso de oxigênio",dicas:{
-   tempestade:"Tenha um plano para falta de energia: bateria ou cilindro de oxigênio reserva",
-   chuva:"Deixe pronta uma bolsa com remédios, receitas e documentos",
-   calor:"Mude o acamado de posição, ofereça água e deixe o quarto arejado",
-   base:"Tenha um plano para falta de energia"}},
- {id:"pcd",emoji:"♿",nome:"Pessoas com deficiência",dicas:{
-   chuva:"Combine com vizinhos quem vai ajudar se a rua alagar",
-   tempestade:"Deixe a cadeira de rodas e as baterias carregadas e por perto",
-   calor:"Cadeira de rodas exposta ao sol esquenta: cuidado com queimaduras",
-   base:"Tenha um plano de ajuda com vizinhos e família"}},
- {id:"renal",emoji:"💧",nome:"Doença renal ou cardíaca",dicas:{
-   calor:"Siga a quantidade de líquidos que a equipe de saúde orientou",
-   seco:"Siga a quantidade de líquidos que a equipe de saúde orientou"}}
-];
-function cuidadosPorGrupo(R){
-  const ativos=tiposAtivos(R), prio=["tempestade","chuva","calor","seco"];
-  return GRUPOS.map(g=>{const dicas=prio.filter(t=>ativos.has(t)&&g.dicas[t]).map(t=>g.dicas[t]);
-    if(!dicas.length&&g.dicas.base) dicas.push(g.dicas.base);
-    return {...g,lista:[...new Set(dicas)].slice(0,1)}}).filter(g=>g.lista.length);
-}
+/* Grupos vulneráveis, frases e dica da época: ver js/orientacoes.js */
 
 function nomeDia(t,i){const dt=new Date(t+"T12:00");return i===0?"Hoje":i===1?"Amanhã":DIAS[dt.getDay()].replace(/^./,s=>s.toUpperCase())}
 function montarBoletim(p,avisos,R,G){
@@ -174,6 +121,8 @@ function montarBoletim(p,avisos,R,G){
     G.forEach(g=>{L_.push(`${g.emoji} *${g.nome}*`);g.lista.forEach(x=>L_.push("▫️ "+x));L_.push("")});
   }
   L_.push(SEP);
+  const ep=dicaDaEpoca(d.time[0]);
+  if(ep){ L_.push(`${ep.emoji} *${ep.titulo.toUpperCase()}*`); L_.push("▫️ "+ep.texto); L_.push(""); L_.push(SEP); }
   L_.push("☎️ *EMERGÊNCIAS*");
   L_.push("🟠 *199* Defesa Civil · 🚒 *193* Bombeiros · 🚑 *192* SAMU");
   L_.push("");

@@ -138,6 +138,15 @@ function desenharCard2(p,R,G,info){
     }
     y+=10;
   }
+  const ep=dicaDaEpoca(d.time[0]);
+  if(ep){
+    ctx.font=`500 24px ${B}`; const lin=quebrar(ctx,ep.texto,W-2*M-150).length, h=Math.max(120,74+lin*32);
+    ctx.fillStyle="#fff4d6";rr(ctx,M,y,W-2*M,h,18);ctx.fill();
+    ctx.font=`54px ${E}`;ctx.fillText(ep.emoji,M+24,y+70);
+    ctx.fillStyle="#7a4b00";ctx.font=`800 26px ${B}`;ctx.fillText(ep.titulo.toUpperCase(),M+104,y+44);
+    ctx.fillStyle="#2e4247";ctx.font=`500 24px ${B}`;texto(ctx,ep.texto,M+104,y+80,W-2*M-150,32);
+    y+=h+26;
+  }
   y+=rodape(ctx,y,"");
   finalizarCanvas(cv,ctx,y,"card2-orientacoes-jaborandi-"+d.time[0]+".png","baixar-card2");
 }
