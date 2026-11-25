@@ -1,0 +1,36 @@
+name: Monitor 24h Jaborandi
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: monitor
+  cancel-in-progress: false
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Recuperar estado anterior
+        uses: actions/cache/restore@v4
+        with:
+          path: monitor/estado.json
+          key: estado-${{ github.run_id }}
+          restore-keys: estado-
+      - name: Verificar tempo e avisar no celular
+        env:
+          NTFY_TOPICO: ${{ secrets.NTFY_TOPICO }}
+          TZ: America/Sao_Paulo
+        run: node monitor/monitor.js
+      - name: Guardar estado
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: monitor/estado.json
+          key: estado-${{ github.run_id }}
