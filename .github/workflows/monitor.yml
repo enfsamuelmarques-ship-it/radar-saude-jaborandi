@@ -1,36 +1,33 @@
 name: Monitor 24h Jaborandi
+# Verifica INMET, Defesa Civil, radar e modelos a cada 10 min e manda alertas para o celular (ntfy).
+# Cada execução fica ~5h30 num laço (monitor/laco.sh) e, ao terminar, dispara a próxima.
+# O cron é só reserva: se o laço cair, ele religa o monitor em até 30 min.
 on:
   schedule:
-    - cron: "*/10 * * * *"
+    - cron: "7,37 * * * *"
   workflow_dispatch:
 permissions:
-  contents: read
+  contents: write   # gravar o ramo "dados" (estado + situacao.json para o painel)
+  actions: write    # religar o próprio workflow
 concurrency:
   group: monitor
   cancel-in-progress: false
 jobs:
   verificar:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 350
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - name: Recuperar estado anterior
-        uses: actions/cache/restore@v4
-        with:
-          path: monitor/estado.json
-          key: estado-${{ github.run_id }}
-          restore-keys: estado-
-      - name: Verificar tempo e avisar no celular
+      - name: Verificar a cada 10 min e avisar no celular
         env:
           NTFY_TOPICO: ${{ secrets.NTFY_TOPICO }}
           TZ: America/Sao_Paulo
-        run: node monitor/monitor.js
-      - name: Guardar estado
-        if: always()
-        uses: actions/cache/save@v4
-        with:
-          path: monitor/estado.json
-          key: estado-${{ github.run_id }}
+        run: bash monitor/laco.sh
+      - name: Religar o monitor
+        if: success() || failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run monitor.yml --ref "${{ github.ref_name }}" --repo "${{ github.repository }}"
