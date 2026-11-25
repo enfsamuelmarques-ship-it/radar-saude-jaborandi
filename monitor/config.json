@@ -5,7 +5,7 @@
   "longitude": -48.4125,
   "ntfy_servidor": "https://ntfy.sh",
   "ntfy_topico": "",
-  "link_ao_tocar": "https://alertas2.inmet.gov.br",
+  "link_ao_tocar": "https://enfsamuelmarques-ship-it.github.io/radar-saude-jaborandi/painel-tempo-jaborandi.html",
   "limites": {
     "rajada_alerta_kmh": 60,
     "rajada_atencao_kmh": 45,
