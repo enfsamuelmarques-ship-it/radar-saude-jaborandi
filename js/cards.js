@@ -132,7 +132,11 @@ function desenharCard2(p,R,G,info){
       const par=G.slice(i,i+2), h=Math.max(...par.map(medir));
       par.forEach((g,j)=>{const x=M+j*(cw+20);
         ctx.fillStyle="#e3f1f1";rr(ctx,x,y,cw,h,20);ctx.fill();
-        desenharIcone(ctx,g.id,x+PAD,y+PAD,IC);
+        // emoji colorido centralizado num círculo branco, igual para todos os grupos
+        ctx.save();ctx.fillStyle="#fff";ctx.shadowColor="rgba(11,79,85,.16)";ctx.shadowBlur=8;ctx.shadowOffsetY=2;
+        ctx.beginPath();ctx.arc(x+PAD+IC/2,y+PAD+IC/2,IC/2,0,Math.PI*2);ctx.fill();ctx.restore();
+        ctx.save();ctx.font=`36px ${E}`;ctx.textAlign="center";ctx.textBaseline="middle";
+        ctx.fillText(g.emoji,x+PAD+IC/2,y+PAD+IC/2+2);ctx.restore();
         ctx.fillStyle="#0b4f55";ctx.font=`800 25px ${B}`;const ht=texto(ctx,g.nome,x+TX,y+PAD+36,TW,LT);
         ctx.fillStyle="#2e4247";ctx.font=`500 22px ${B}`;let yy=y+PAD+36+ht-LT+34;
         g.lista.forEach(t=>{yy+=texto(ctx,t,x+TX,yy,TW,LB)});
