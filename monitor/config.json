@@ -1,0 +1,18 @@
+{
+  "cidade": "Jaborandi/SP",
+  "ibge": "3524204",
+  "latitude": -20.68806,
+  "longitude": -48.4125,
+  "ntfy_servidor": "https://ntfy.sh",
+  "ntfy_topico": "",
+  "link_ao_tocar": "https://alertas2.inmet.gov.br",
+  "limites": {
+    "rajada_alerta_kmh": 60,
+    "rajada_atencao_kmh": 45,
+    "chuva_2h_mm": 15,
+    "modelos_minimos_tempestade": 2,
+    "sensacao_calor_c": 38,
+    "umidade_baixa_pct": 20
+  },
+  "resumo_diario_hora": 6
+}

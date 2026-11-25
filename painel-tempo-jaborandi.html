@@ -1,0 +1,344 @@
+<!doctype html>
+<html lang="pt-BR" data-nivel="verde">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sala de Situação Jaborandi</title>
+<link rel="icon" href="logo-radar-saude.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&family=Archivo:wght@500;700;800&family=Public+Sans:wght@400;500;600;700;800&display=swap">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+/* Layout: sala de situação escura. Barra de comando no topo, faixa de avisos, mapa grande + coluna de instrumentos, depois previsão, fontes, recomendações e cards */
+:root{
+  --bg:#06141a; --painel:#0c2128; --painel2:#102a32; --linha:#1c3b44; --fg:#e2f1f3; --mut:#8aacb3;
+  --accent:#33d1d6; --chuva:#4aa3ff; --quente:#ffb547;
+  --ok:#3ccf7f; --amarelo:#f2c200; --laranja:#ff7a1a; --vermelho:#ff4040;
+  --nivel:var(--ok);
+  --f-disp:"Chakra Petch","Segoe UI",system-ui,sans-serif;
+  --f-body:"IBM Plex Sans","Segoe UI",system-ui,sans-serif;
+  --f-num:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+  color-scheme:dark;
+}
+html[data-nivel="amarelo"]{--nivel:var(--amarelo)} html[data-nivel="laranja"]{--nivel:var(--laranja)} html[data-nivel="vermelho"]{--nivel:var(--vermelho)}
+*{box-sizing:border-box}
+body{margin:0;background:radial-gradient(1200px 500px at 70% -10%,#0f3340 0%,transparent 60%),var(--bg);color:var(--fg);font:15px/1.5 var(--f-body);min-height:100vh}
+.wrap{max-width:1440px;margin:0 auto;padding-block:14px 48px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:14px}
+h1,h2,h3{margin:0;font-family:var(--f-disp);letter-spacing:.02em;text-wrap:balance}
+h2{font-size:.95rem;text-transform:uppercase;letter-spacing:.1em;color:var(--mut);font-weight:600}
+h3{font-size:1rem;font-weight:600}
+a{color:var(--accent)}
+.num{font-family:var(--f-num);font-variant-numeric:tabular-nums}
+.mut{color:var(--mut)}
+button,.btn,select{font:600 .85rem var(--f-body);color:var(--fg);background:var(--painel2);border:1px solid var(--linha);border-radius:8px;padding:8px 12px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;text-decoration:none}
+button:hover,.btn:hover{border-color:var(--accent)}
+button:focus-visible,.btn:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button[aria-pressed="true"]{background:color-mix(in srgb,var(--accent) 22%,var(--painel2));border-color:var(--accent);color:#fff}
+button:disabled{opacity:.6;cursor:wait}
+.btn-wa{background:#1f8f52;border-color:#1f8f52;color:#fff}
+.ref{width:34px;height:34px;padding:0;justify-content:center;font-size:1.05rem}
+.girando{animation:giro .8s linear infinite}
+@keyframes giro{to{transform:rotate(360deg)}}
+
+/* barra de comando */
+.topo{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;border:1px solid var(--linha);border-radius:14px;
+  background:linear-gradient(90deg,color-mix(in srgb,var(--nivel) 20%,var(--painel)) 0%,var(--painel) 45%);box-shadow:inset 4px 0 0 var(--nivel)}
+.marca{display:flex;align-items:center;gap:14px;min-width:0}
+.selo{width:56px;height:56px;flex:none;border-radius:50%;display:grid;place-items:center;background:#06141a;border:2px solid var(--nivel);box-shadow:0 0 18px color-mix(in srgb,var(--nivel) 45%,transparent)}
+.selo svg{width:46px;height:46px}
+.selo .varredura{transform-origin:34px 34px;animation:varrer 4s linear infinite}
+.selo .ponto{fill:var(--nivel);animation:piscar 2s ease-in-out infinite}
+@keyframes varrer{to{transform:rotate(360deg)}}
+@keyframes piscar{50%{opacity:.35}}
+.marca small{display:block;font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;color:var(--mut)}
+.marca h1{font-size:clamp(1.2rem,2.4vw,1.6rem);font-weight:700}
+.marca .nv{color:var(--nivel)}
+.comandos{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.status{display:inline-flex;align-items:center;gap:8px;font:700 .78rem var(--f-disp);letter-spacing:.12em;padding:6px 10px;border-radius:99px;border:1px solid var(--linha);background:var(--bg)}
+.status::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 0 var(--ok);animation:pulso 1.8s infinite}
+.status[data-ok="nao"]::before{background:var(--laranja)}
+@keyframes pulso{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--ok) 70%,transparent)}100%{box-shadow:0 0 0 10px transparent}}
+.anel{--p:0;width:38px;height:38px;border-radius:50%;background:conic-gradient(var(--accent) calc(var(--p)*1%),var(--linha) 0);display:grid;place-items:center}
+.anel span{width:30px;height:30px;border-radius:50%;background:var(--painel);display:grid;place-items:center;font:500 .62rem var(--f-num)}
+.relogio{font:500 1rem var(--f-num);color:var(--mut)}
+
+/* avisos */
+.faixa{display:grid;grid-template-columns:auto 1fr;gap:12px;align-items:start}
+@media (max-width:700px){.faixa{grid-template-columns:1fr}}
+.faixa h2{padding-top:10px}
+#lista-avisos{display:flex;gap:10px;flex-wrap:wrap}
+.aviso{--c:var(--amarelo);text-align:left;display:flex;gap:10px;align-items:center;padding:8px 14px 8px 10px;border-radius:10px;border:1px solid var(--c);background:color-mix(in srgb,var(--c) 14%,var(--painel));max-width:100%}
+.aviso-ico{font-size:1.5rem}
+.aviso-txt{display:flex;flex-wrap:wrap;gap:0 10px;align-items:baseline;min-width:0}
+.aviso-txt b{font-family:var(--f-disp);font-size:1rem}
+.aviso .sev{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--c)}
+.aviso small{flex-basis:100%;color:var(--mut);font-family:var(--f-num);font-size:.75rem}
+#aviso-detalhe{grid-column:1/-1;padding:12px 16px;border:1px solid var(--linha);border-radius:10px;background:var(--painel);font-size:.9rem}
+#aviso-detalhe p{margin:.4em 0 0}
+.vazio{padding:10px 14px;border:1px dashed var(--linha);border-radius:10px;color:var(--mut)}
+
+/* grade principal */
+.principal{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:14px}
+@media (max-width:1050px){.principal{grid-template-columns:1fr}}
+.painel{background:var(--painel);border:1px solid var(--linha);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.cab{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.cab .dir{display:flex;align-items:center;gap:8px;color:var(--mut);font-size:.78rem}
+
+/* mapa */
+.mapa-box{position:relative;border-radius:12px;overflow:hidden;border:1px solid var(--linha)}
+#mapa{height:min(68vh,640px);min-height:420px;background:#0a1a1f}
+.ctrl{position:absolute;z-index:500;display:flex;gap:6px;flex-wrap:wrap;padding:6px;border-radius:10px;background:rgba(6,20,26,.82);backdrop-filter:blur(6px);border:1px solid var(--linha)}
+.ctrl button{padding:6px 10px;font-size:.78rem}
+.ctrl-base{top:10px;left:10px}
+.ctrl-cam{top:10px;right:10px;flex-direction:column;align-items:stretch}
+.ctrl-cam button{justify-content:flex-start}
+.ctrl-cam hr{border:0;border-top:1px solid var(--linha);margin:2px 0}
+.ctrl-tempo{left:10px;right:60px;bottom:10px;align-items:center;gap:10px}
+.ctrl-tempo label{font-size:.75rem;color:var(--mut);display:flex;align-items:center;gap:6px}
+.ctrl-tempo input[type=range]{accent-color:var(--accent)}
+#sat-slider{flex:1;min-width:120px}
+#sat-hora{font:500 .8rem var(--f-num);min-width:120px}
+@media (max-width:700px){.ctrl-cam{top:auto;bottom:64px;right:10px;left:10px;flex-direction:row;flex-wrap:wrap}.ctrl-cam hr{display:none}.ctrl-tempo{right:10px}}
+.rotulo-jab{background:transparent;border:0;box-shadow:none;color:#fff;font:700 13px var(--f-disp);letter-spacing:.14em;text-shadow:0 0 4px #000,0 0 8px #000}
+.rotulo-jab::before{display:none}
+.seta-vento svg{width:34px;height:34px;filter:drop-shadow(0 0 2px #000)}
+.leaflet-container{font:13px var(--f-body)}
+.leaflet-popup-content-wrapper,.leaflet-popup-tip{background:var(--painel2);color:var(--fg)}
+.leaflet-tooltip{background:var(--painel2);color:var(--fg);border-color:var(--linha)}
+.leaflet-control-attribution{background:rgba(6,20,26,.7)!important;color:var(--mut)!important}
+.leaflet-control-attribution a{color:var(--mut)!important}
+.leaflet-bar a{background:var(--painel2);color:var(--fg);border-color:var(--linha)}
+
+/* instrumentos */
+.agora{display:flex;align-items:center;gap:14px}
+#a-ico{font-size:3rem;line-height:1}
+#a-temp{font:700 3.4rem/1 var(--f-disp)}
+#a-desc{font-weight:600}
+.medidores{display:flex;flex-direction:column;gap:10px}
+.medidor{display:grid;grid-template-columns:90px 1fr auto;align-items:center;gap:10px;font-size:.82rem}
+.medidor span{color:var(--mut)}
+.medidor .trilho{height:8px;border-radius:4px;background:var(--linha);overflow:hidden}
+.medidor i{display:block;height:100%;border-radius:4px;transition:width .6s}
+.medidor b{font-family:var(--f-num);font-weight:500;min-width:72px;text-align:right}
+.medidor em{grid-column:2/4;font-style:normal;color:var(--mut);font-size:.72rem;margin-top:-6px}
+#graf24 svg{width:100%;height:auto;display:block}
+#graf24 text{fill:var(--mut);font:10px var(--f-num)}
+#graf24 text.t{fill:var(--quente)}
+.leg{display:flex;gap:12px;font-size:.72rem;color:var(--mut)}
+.leg i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+
+/* dias */
+#dias{display:grid;grid-template-columns:repeat(7,minmax(118px,1fr));gap:8px;overflow-x:auto;padding-bottom:4px}
+.dia{flex-direction:column;align-items:flex-start;gap:2px;padding:10px 12px;border-top:3px solid var(--c);text-align:left;min-width:0}
+.dia .dn{font:600 .85rem var(--f-disp);text-transform:capitalize}
+.dia .de{font-size:1.6rem}
+.dia .dt{font-size:.85rem}.dia .dc{font-size:.72rem;color:var(--mut)}
+.dia .dnv{font-size:.68rem;text-transform:uppercase;letter-spacing:.06em;color:var(--c);font-weight:700}
+
+/* fontes */
+.duas{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:14px}
+@media (max-width:900px){.duas{grid-template-columns:1fr}}
+.consenso{--p:0%;display:flex;align-items:center;gap:14px}
+.consenso .rad{width:76px;height:76px;border-radius:50%;display:grid;place-items:center;background:conic-gradient(var(--cc,var(--ok)) var(--p),var(--linha) 0)}
+.consenso .rad span{width:60px;height:60px;border-radius:50%;background:var(--painel);display:grid;place-items:center;font:700 1.1rem var(--f-disp)}
+.consenso[data-nivel="medio"]{--cc:var(--amarelo)} .consenso[data-nivel="alto"]{--cc:var(--laranja)}
+#consenso-txt{font-weight:600}
+#modelos{display:flex;flex-direction:column;gap:8px}
+.modelo{display:grid;grid-template-columns:110px 120px 1fr 1fr;gap:10px;align-items:center;padding:8px 10px;border-radius:8px;background:var(--painel2);font-size:.82rem}
+@media (max-width:600px){.modelo{grid-template-columns:1fr 1fr}}
+.modelo .mn small{display:block;color:var(--mut);font-size:.7rem}
+.modelo.tem .mt{color:var(--laranja);font-weight:700}
+.modelo .mt{color:var(--mut)}
+.barra{position:relative;height:22px;border-radius:5px;background:var(--linha);overflow:hidden}
+.barra i{position:absolute;inset:0 auto 0 0;border-radius:5px;opacity:.85}
+.barra em{position:relative;font:500 .72rem/22px var(--f-num);font-style:normal;padding-left:8px}
+#prox2h{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:6px;align-items:end}
+.q15{position:relative;display:flex;flex-direction:column;align-items:center;gap:3px}
+.qb{width:100%;height:90px;border-radius:6px;background:var(--painel2);display:flex;align-items:flex-end;overflow:hidden}
+.qb i{display:block;width:100%;background:linear-gradient(var(--chuva),#2560a8);border-radius:6px 6px 0 0}
+.q15.raio .qb{box-shadow:inset 0 0 0 2px var(--amarelo)}
+.qv{font-size:.72rem}.qh{font-size:.65rem;color:var(--mut)}
+.qr{position:absolute;top:4px;font-size:.9rem}
+#prox2h-res{font-size:.82rem;color:var(--mut)}
+
+/* recomendações */
+#riscos{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px}
+.risco{border:1px solid var(--linha);border-left:4px solid var(--c);border-radius:10px;padding:12px;background:var(--painel2)}
+.risco header{display:flex;gap:10px;align-items:center}
+.ri{font-size:1.6rem}
+.risco .nivel{font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--c)}
+.risco ul{margin:8px 0 0;padding-left:18px;font-size:.86rem;color:#c7dde1}
+#grupos-chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip-g{border-radius:99px;padding:6px 12px;font-size:.8rem}
+.chip-g.apagado{opacity:.55}
+#grupos{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px}
+.grupo{border:1px solid var(--linha);border-radius:10px;padding:12px;background:var(--painel2)}
+.grupo header{display:flex;gap:10px;align-items:center}
+.ge{font-size:1.5rem}
+.grupo p{margin:8px 0 0;font-size:.86rem;color:#c7dde1}
+.grupo.aberto{grid-column:1/-1}
+.todas{list-style:none;margin:10px 0 0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:8px}
+.todas li{padding:10px;border-radius:8px;background:var(--painel);font-size:.86rem;border:1px solid var(--linha)}
+.todas li b{display:block;font-size:.75rem;color:var(--mut);margin-bottom:2px}
+.todas li.ativo{border-color:var(--laranja)} .todas li.ativo b{color:var(--laranja)}
+
+/* cards */
+.cards-duplos{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start}
+@media (max-width:760px){.cards-duplos{grid-template-columns:1fr}}
+.card-col{display:flex;flex-direction:column;gap:8px;min-width:0}
+.card-col canvas{width:100%;height:auto;border-radius:10px;display:block;border:1px solid var(--linha)}
+.linha-btn{display:flex;gap:8px;flex-wrap:wrap}
+details summary{cursor:pointer;color:var(--mut);font-size:.88rem}
+textarea{width:100%;min-height:300px;margin-top:10px;font:13px/1.45 var(--f-body);padding:12px;border-radius:8px;border:1px solid var(--linha);background:var(--bg);color:var(--fg)}
+#toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:2000;background:var(--painel2);border:1px solid var(--accent);padding:10px 16px;border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.4);max-width:calc(100% - 32px)}
+.fontes{font-size:.8rem;color:var(--mut)}
+.fontes ul{margin:4px 0;padding-left:18px}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="topo">
+  <div class="marca">
+    <div class="selo" id="logo" aria-hidden="true"></div>
+    <div>
+      <small>Radar da Saúde · Vigilância em Saúde · Jaborandi/SP</small>
+      <h1>Tempo e Saúde <span class="nv" id="nivel-geral">—</span></h1>
+    </div>
+  </div>
+  <div class="comandos">
+    <span class="relogio" id="relogio" aria-label="Hora atual"></span>
+    <span class="status" id="status" data-ok="sim"><span id="status-txt">CONECTANDO</span></span>
+    <div class="anel" id="anel" title="Tempo até a próxima atualização"><span id="cont">--</span></div>
+    <label class="mut" style="font-size:.78rem;display:flex;gap:6px;align-items:center">a cada
+      <select id="sel-intervalo" aria-label="Intervalo de atualização"><option value="1">1 min</option><option value="2">2 min</option><option value="5">5 min</option><option value="10">10 min</option></select></label>
+    <button type="button" id="btn-auto" aria-pressed="true">Automático ligado</button>
+    <button type="button" id="btn-tudo">↻ Atualizar tudo</button>
+    <button type="button" id="btn-notif" hidden>🔔 Avisos no PC</button>
+  </div>
+</header>
+
+<section class="faixa" aria-labelledby="t-avisos">
+  <div style="display:flex;gap:8px;align-items:center"><h2 id="t-avisos">Avisos INMET</h2>
+    <button type="button" class="ref" data-atualizar="avisos" aria-label="Atualizar avisos do INMET" title="Atualizar avisos">↻</button></div>
+  <div id="lista-avisos"><div class="vazio">Consultando o INMET…</div></div>
+  <div id="aviso-detalhe" hidden></div>
+</section>
+
+<div class="principal">
+  <section class="painel" aria-labelledby="t-mapa">
+    <div class="cab"><h2 id="t-mapa">Mapa ao vivo</h2>
+      <div class="dir"><span data-carimbo="mapa"></span>
+        <button type="button" id="btn-centro">◎ Jaborandi</button><button type="button" id="btn-regiao">⤢ Região</button>
+        <button type="button" class="ref" data-atualizar="mapa" aria-label="Atualizar mapa" title="Atualizar mapa">↻</button></div></div>
+    <div class="mapa-box">
+      <div id="mapa" role="region" aria-label="Mapa de satélite de Jaborandi com nuvens"></div>
+      <div class="ctrl ctrl-base" role="group" aria-label="Mapa de fundo">
+        <button type="button" data-base="satelite" aria-pressed="true">🛰️ Satélite</button>
+        <button type="button" data-base="ruas" aria-pressed="false">🗺️ Ruas</button>
+        <button type="button" data-base="escuro" aria-pressed="false">🌑 Escuro</button>
+      </div>
+      <div class="ctrl ctrl-cam" role="group" aria-label="Camadas">
+        <button type="button" data-prod="real" aria-pressed="true">☁️ Nuvens reais</button>
+        <button type="button" data-prod="ir" aria-pressed="false">🌡️ Infravermelho</button>
+        <button type="button" data-prod="off" aria-pressed="false">Sem nuvens</button>
+        <hr>
+        <button type="button" data-cam="chuva" aria-pressed="false">🌧️ Chuva satélite</button>
+        <button type="button" data-cam="vento" aria-pressed="false">💨 Vento</button>
+        <button type="button" data-cam="avisos" aria-pressed="true">⚠️ Avisos</button>
+        <button type="button" data-cam="cidades" aria-pressed="true">📍 Cidades</button>
+      </div>
+      <div class="ctrl ctrl-tempo" role="group" aria-label="Linha do tempo do satélite">
+        <button type="button" id="sat-play" class="ref" aria-label="Animar últimas 2 horas">▶</button>
+        <input type="range" id="sat-slider" min="0" max="11" value="11" aria-label="Horário da imagem de satélite">
+        <span id="sat-hora">--</span>
+        <label>opacidade <input type="range" id="sat-opac" min="20" max="100" value="55" aria-label="Opacidade das nuvens"></label>
+      </div>
+    </div>
+    <p class="mut" style="margin:0;font-size:.78rem">Toque em qualquer ponto do mapa para ver o tempo daquele lugar. As imagens do satélite GOES-East chegam com 40 a 90 minutos de atraso. Para ver a chuva neste exato momento, use também o <a href="https://www.ipmetradar.com.br" target="_blank" rel="noopener">radar do IPMet</a>. As áreas de aviso tracejadas valem para os próximos dias.</p>
+  </section>
+
+  <aside class="painel" aria-labelledby="t-agora">
+    <div class="cab"><h2 id="t-agora">Agora em Jaborandi</h2>
+      <div class="dir"><span data-carimbo="agora"></span><button type="button" class="ref" data-atualizar="agora" aria-label="Atualizar condições atuais" title="Atualizar">↻</button></div></div>
+    <div class="agora"><span id="a-ico" aria-hidden="true">⛅</span>
+      <div><div id="a-temp" class="num">--°</div><div id="a-desc">—</div><div class="mut" id="a-sens" style="font-size:.85rem"></div></div></div>
+    <div class="medidores">
+      <div class="medidor" id="m-umid"><span>Umidade</span><span class="trilho"><i></i></span><b>--</b><em></em></div>
+      <div class="medidor" id="m-vento"><span>Rajada</span><span class="trilho"><i></i></span><b>--</b><em></em></div>
+      <div class="medidor" id="m-uv"><span>Índice UV</span><span class="trilho"><i></i></span><b>--</b><em></em></div>
+    </div>
+    <div><h3 style="font-size:.85rem;margin-bottom:4px">Próximas 24 horas</h3><div id="graf24"></div>
+      <div class="leg"><span><i style="background:var(--quente)"></i>temperatura</span><span><i style="background:var(--chuva)"></i>chuva por hora</span></div></div>
+  </aside>
+</div>
+
+<section class="painel" aria-labelledby="t-dias">
+  <div class="cab"><h2 id="t-dias">Previsão 7 dias · toque num dia para ver as recomendações dele</h2></div>
+  <div id="dias"></div>
+</section>
+
+<div class="duas">
+  <section class="painel" aria-labelledby="t-fontes">
+    <div class="cab"><h2 id="t-fontes">Confirmação entre 4 modelos · próximas 6 h</h2>
+      <div class="dir"><span data-carimbo="fontes"></span><button type="button" class="ref" data-atualizar="fontes" aria-label="Atualizar modelos" title="Atualizar">↻</button></div></div>
+    <div class="consenso" id="consenso"><div class="rad"><span id="consenso-n">-/-</span></div>
+      <div><div id="consenso-txt">Consultando…</div><div class="mut" style="font-size:.8rem">modelos que preveem tempestade. O aviso oficial é sempre o do INMET.</div></div></div>
+    <div id="modelos"></div>
+  </section>
+  <section class="painel" aria-labelledby="t-2h">
+    <div class="cab"><h2 id="t-2h">Próximas 2 horas · a cada 15 min</h2></div>
+    <div id="prox2h"></div>
+    <div id="prox2h-res"></div>
+  </section>
+</div>
+
+<section class="painel" aria-labelledby="t-rec">
+  <div class="cab"><h2 id="t-rec">Recomendações de saúde · <span id="rec-titulo">hoje e amanhã</span></h2></div>
+  <div id="riscos"></div>
+  <h3 style="margin-top:6px">Grupos vulneráveis <span class="mut" style="font-weight:400;font-size:.82rem">· toque num grupo para ver todas as orientações dele</span></h3>
+  <div id="grupos-chips"></div>
+  <div id="grupos"></div>
+</section>
+
+<section class="painel" aria-labelledby="t-card">
+  <div class="cab"><h2 id="t-card">Cards para o WhatsApp · sempre do dia de hoje</h2></div>
+  <div class="cards-duplos">
+    <div class="card-col"><h3>1. Tempo e avisos</h3>
+      <canvas id="card1" width="1080" height="1350" aria-label="Card 1: tempo, avisos e mapa"></canvas>
+      <div class="linha-btn"><button type="button" data-copiar="card1">Copiar card 1</button><a class="btn" id="baixar-card1" href="#" download="card1.png">Salvar card 1</a></div></div>
+    <div class="card-col"><h3>2. Orientações de saúde</h3>
+      <canvas id="card2" width="1080" height="1350" aria-label="Card 2: orientações de saúde"></canvas>
+      <div class="linha-btn"><button type="button" data-copiar="card2">Copiar card 2</button><a class="btn" id="baixar-card2" href="#" download="card2.png">Salvar card 2</a></div></div>
+  </div>
+  <div class="linha-btn"><button type="button" id="btn-logo">Baixar logo para a foto do grupo</button></div>
+  <p class="mut" style="margin:0;font-size:.82rem">No computador: copie o card, abra o grupo e cole com Ctrl + V. No celular: salve as imagens e envie com a opção HD.</p>
+  <details><summary>Texto do boletim (opcional)</summary>
+    <textarea id="msg" aria-label="Texto do boletim"></textarea>
+    <div class="linha-btn" style="margin-top:8px"><button type="button" id="btn-copiar">Copiar texto</button><a id="btn-wa" class="btn btn-wa" href="https://wa.me/" target="_blank" rel="noopener">Abrir no WhatsApp</a></div>
+  </details>
+</section>
+
+<footer class="fontes">
+  <b>Fontes</b>
+  <ul>
+    <li>Avisos oficiais: <a href="https://alertas2.inmet.gov.br" target="_blank" rel="noopener">INMET</a> · Radar regional: <a href="https://www.ipmetradar.com.br" target="_blank" rel="noopener">IPMet/Unesp</a></li>
+    <li>Previsão: <a href="https://open-meteo.com" target="_blank" rel="noopener">Open-Meteo</a>, comparando ECMWF (Centro Europeu), GFS (NOAA, EUA), ICON (Serviço Meteorológico Alemão) e UK Met Office</li>
+    <li>Satélite: GOES-East (NOAA) e chuva NASA IMERG, via <a href="https://worldview.earthdata.nasa.gov" target="_blank" rel="noopener">NASA GIBS</a> · Mapas: Esri · Limites municipais: IBGE</li>
+  </ul>
+  Limiares de umidade conforme a classificação usada pela Defesa Civil/CGE (atenção &lt;30%, alerta &lt;20%, emergência &lt;12%).
+</footer>
+</div>
+<div id="toast" role="status" hidden></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="js/base.js"></script>
+<script src="js/logo.js"></script>
+<script src="js/malha.js"></script>
+<script src="js/regras.js"></script>
+<script src="js/cards.js"></script>
+<script src="js/mapa.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
