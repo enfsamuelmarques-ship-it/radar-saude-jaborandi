@@ -13,12 +13,17 @@ DURACAO_MIN=${DURACAO_MIN:-330}
 AUTH="$(git config --get http.https://github.com/.extraheader || true)"
 REMOTO="https://github.com/${GITHUB_REPOSITORY}.git"
 
-# recupera o estado salvo pela execução anterior
-if git -c http.https://github.com/.extraheader="$AUTH" fetch -q --depth 1 "$REMOTO" dados 2>/dev/null; then
-  git show FETCH_HEAD:estado.json > monitor/estado.json 2>/dev/null && echo "Estado anterior recuperado." || rm -f monitor/estado.json
+# recupera o estado salvo pela execução anterior (em pasta à parte: a pasta do checkout já tem a
+# credencial configurada, e mandá-la duas vezes faz o GitHub recusar o pedido)
+RECUP=$(mktemp -d)
+if git -C "$RECUP" init -q && git -C "$RECUP" -c http.https://github.com/.extraheader="$AUTH" fetch -q --depth 1 "$REMOTO" dados \
+   && git -C "$RECUP" show FETCH_HEAD:estado.json > monitor/estado.json; then
+  echo "Estado anterior recuperado ($(wc -c < monitor/estado.json) bytes)."
 else
-  echo "Ramo dados ainda não existe: começando com estado vazio."
+  rm -f monitor/estado.json
+  echo "::warning::Não deu para recuperar o estado do ramo dados: começando do zero (alertas ativos podem ser reenviados)."
 fi
+rm -rf "$RECUP"
 
 publicar() {
   local tmp; tmp=$(mktemp -d)

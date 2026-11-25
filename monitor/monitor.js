@@ -70,9 +70,18 @@ const quando = a => {
 async function enviar({ titulo, mensagem, prioridade = 3, tags = [] }) {
   if (SO_VER) { log(`(só ver) ALERTA p${prioridade}: ${titulo} | ${mensagem.replace(/\n/g, " / ")}`); return; }
   const corpo = { topic: CFG.ntfy_topico, title: titulo, message: mensagem, priority: prioridade, tags, click: CFG.link_ao_tocar };
-  const r = await fetch(CFG.ntfy_servidor, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corpo), signal: AbortSignal.timeout(30000) });
-  if (!r.ok) throw new Error("ntfy HTTP " + r.status);
-  log(`ENVIADO p${prioridade}: ${titulo}`);
+  // O ntfy.sh limita pedidos por endereço IP, e os servidores do GitHub são compartilhados:
+  // em caso de "muitos pedidos" (429) ou falha do servidor, espera e tenta de novo.
+  // O que não sair aqui fica sem marcar e é tentado de novo na rodada seguinte (10 min).
+  const esperas = [0, 20, 60];
+  for (let i = 0; i < esperas.length; i++) {
+    if (esperas[i]) await new Promise(r => setTimeout(r, esperas[i] * 1000));
+    const r = await fetch(CFG.ntfy_servidor, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corpo), signal: AbortSignal.timeout(30000) });
+    if (r.ok) { log(`ENVIADO p${prioridade}: ${titulo}`); return; }
+    if (r.status !== 429 && r.status < 500) throw new Error("ntfy HTTP " + r.status);
+    log(`ntfy respondeu ${r.status}; tentativa ${i + 1} de ${esperas.length}`);
+  }
+  throw new Error("ntfy recusou após " + esperas.length + " tentativas");
 }
 
 // Evita repetir o mesmo tipo de alerta antes do intervalo (horas), a não ser que o nível suba
@@ -269,7 +278,11 @@ async function principal() {
       if (a.marcarDC) est.dcVistos.push(a.marcarDC);
       if (a.chave) marcar(est, a.chave, a.nivel || 0);
       if (a.resumo) est.ultimoResumo = a.resumo;
-    } catch (e) { log("Falha ao enviar alerta: " + e.message); }
+    } catch (e) {
+      log("Falha ao enviar alerta: " + e.message);
+      // ntfy bloqueado: deixa os demais para a próxima rodada em vez de esperar por cada um
+      if (/recusou/.test(e.message)) break;
+    }
   }
   est.ultimaVerificacao = new Date().toISOString();
   est.modelos = modelos;
