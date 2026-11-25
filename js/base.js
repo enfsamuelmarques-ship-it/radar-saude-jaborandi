@@ -17,5 +17,8 @@ const store = {get(k){try{return JSON.parse(localStorage.getItem(k))}catch{retur
 const hhmm = d => d.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"});
 async function getJSON(url){const r=await fetch(url,{cache:"no-store"});if(!r.ok)throw new Error(r.status);return r.json()}
 const OM = "https://api.open-meteo.com/v1/forecast";
+// resumo gravado pelo monitor 24 h (GitHub Actions) a cada 10 min: alertas da Defesa Civil e status do monitor
+const SITUACAO_URL = "https://raw.githubusercontent.com/enfsamuelmarques-ship-it/radar-saude-jaborandi/dados/situacao.json";
+const RADAR_API = "https://api.rainviewer.com/public/weather-maps.json";
 const qs = o => new URLSearchParams(o).toString();
 function direcao(g){return ["N","NE","L","SE","S","SO","O","NO"][Math.round(((g%360)+360)%360/45)%8]}

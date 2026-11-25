@@ -1,4 +1,4 @@
-/* Mapa interativo: satélite, nuvens animadas (GOES-East), chuva por satélite, avisos, vento e cidades */
+/* Mapa interativo: radar de chuva, satélite, nuvens animadas (GOES-East), chuva por satélite, avisos, vento e cidades */
 "use strict";
 const GIBS="https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/";
 const ESRI="https://server.arcgisonline.com/ArcGIS/rest/services/";
@@ -19,9 +19,11 @@ const Mapa = (() => {
   // painéis para ordenar as camadas
   m.createPane("nuvens"); m.getPane("nuvens").style.zIndex=350;
   m.createPane("chuva"); m.getPane("chuva").style.zIndex=360;
+  m.createPane("radar"); m.getPane("radar").style.zIndex=380;
   m.createPane("limites"); m.getPane("limites").style.zIndex=420;
 
   const cam = {
+    radar: L.layerGroup().addTo(m),
     avisos: L.layerGroup().addTo(m),
     cidades: L.layerGroup().addTo(m),
     vento: L.layerGroup(),
@@ -105,6 +107,17 @@ const Mapa = (() => {
   $("btn-centro").onclick = () => m.flyTo([LOCAL.lat,LOCAL.lon],11,{duration:.8});
   $("btn-regiao").onclick = () => m.flyTo([LOCAL.lat,LOCAL.lon],8,{duration:.8});
 
+  /* ---- radar de chuva (mosaico de radares RainViewer, atualizado a cada 10 min) ---- */
+  // zoom 7 é o máximo do plano gratuito; acima disso a imagem é ampliada
+  async function recarregarRadar(){
+    const j = await getJSON(RADAR_API), q = j.radar?.past || [];
+    if(!q.length) throw new Error("radar sem quadros");
+    const ult = q[q.length-1];
+    cam.radar.clearLayers();
+    L.tileLayer(`${j.host}${ult.path}/256/{z}/{x}/{y}/2/1_1.png`,{pane:"radar",opacity:.85,maxNativeZoom:7,maxZoom:17,attribution:"Radar © RainViewer"}).addTo(cam.radar);
+    return {host:j.host, quadros:q};
+  }
+
   /* ---- chuva estimada por satélite (NASA IMERG) ---- */
   function recarregarChuva(){
     cam.chuva.clearLayers();
@@ -151,6 +164,6 @@ const Mapa = (() => {
        .bindTooltip(`<b>${esc(nome)}</b><br>${fmt(mm,0)} mm hoje · máx ${fmt(d.daily.temperature_2m_max[0])}°`).addTo(cam.cidades); });
   }
 
-  return { recarregarNuvens, recarregarChuva, carregarVento, desenharAvisos, desenharCidades, focarAviso,
+  return { recarregarNuvens, recarregarChuva, recarregarRadar, carregarVento, desenharAvisos, desenharCidades, focarAviso,
     ventoLigado: () => m.hasLayer(cam.vento), mapa: m };
 })();

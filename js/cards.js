@@ -28,7 +28,7 @@ function rodape(ctx,y,txtTopo){
   ctx.fillStyle="#13262b";rr(ctx,M,y,W-2*M,txtTopo?190:150,20);ctx.fill();let yy=y;
   if(txtTopo){ctx.fillStyle="#9fe3e4";ctx.font=`700 24px ${B}`;ctx.fillText(txtTopo,M+28,yy+44);yy+=40}
   ctx.fillStyle="#fff";ctx.font=`800 34px ${B}`;ctx.fillText("☎️ 199 Defesa Civil · 193 Bombeiros · 192 SAMU",M+28,yy+56);
-  ctx.font=`500 21px ${B}`;ctx.fillStyle="#cfe3e5";ctx.fillText("Fontes: INMET (avisos oficiais) e Open-Meteo (previsão)",M+28,yy+94);
+  ctx.font=`500 21px ${B}`;ctx.fillStyle="#cfe3e5";ctx.fillText("Fontes: INMET e Defesa Civil (avisos) · radar e Open-Meteo (previsão)",M+28,yy+94);
   ctx.font=`700 21px ${B}`;ctx.fillStyle="#fff";ctx.fillText(ASSINATURA,M+28,yy+126);
   return (txtTopo?190:150)+30;
 }
@@ -57,7 +57,7 @@ function desenharCard1(p,avisos,R,info){
     agora.toLocaleDateString("pt-BR",{weekday:"long",day:"2-digit",month:"long"})+" · atualizado às "+agora.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}),emojiTempo(c.weather_code));
   y+=36;
   // mapas hoje / amanhã
-  ctx.fillStyle="#13262b";ctx.font=`800 32px ${F}`;ctx.fillText("🗺️ NÍVEL DE AVISO DO INMET EM JABORANDI",M,y+8);y+=30;
+  ctx.fillStyle="#13262b";ctx.font=`800 32px ${F}`;ctx.fillText("🗺️ NÍVEL DE AVISO OFICIAL EM JABORANDI",M,y+8);y+=30;
   const mw=(W-2*M-24)/2, mh=360;
   let alturaInfo=0;
   [0,1].forEach(i=>{const x=M+i*(mw+24), lista=avisosDoDia(avisos,d.time[i]), nv=nivelDoDia(lista);

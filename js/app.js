@@ -1,6 +1,6 @@
 /* Sala de situação: carrega as fontes, calcula riscos e atualiza a tela */
 "use strict";
-const S = { avisos:[], prev:null, cidades:null, fontes:null, dia:0, grupoAberto:null, atualizado:{} };
+const S = { avisos:[], inmet:[], dc:[], situacao:null, situacaoErro:false, radar:null, radarErro:false, prev:null, cidades:null, fontes:null, dia:0, grupoAberto:null, atualizado:{} };
 
 /* ---------- carimbo "atualizado há" ---------- */
 function carimbar(secao){ S.atualizado[secao]=Date.now(); tick(); }
@@ -17,23 +17,102 @@ async function girar(btn, fn){
   try{ await fn(); } finally { if(btn){btn.classList.remove("girando");btn.disabled=false} }
 }
 
-/* ---------- INMET ---------- */
+/* ---------- avisos oficiais: INMET + Defesa Civil ---------- */
 async function atualizarAvisos(){
   try{
     const d = await getJSON("https://apiprevmet3.inmet.gov.br/avisos/ativos");
-    S.avisos = avisosDeJaborandi(d); S.erroAvisos=false; notificarNovos(S.avisos); carimbar("avisos");
+    S.inmet = avisosDeJaborandi(d).map(a=>({...a,fonte:"INMET"})); S.erroAvisos=false; carimbar("avisos");
   }catch{ S.erroAvisos=true; }
-  renderAvisos(); recalcular();
+  juntarAvisos();
 }
+// A Defesa Civil não libera o feed para navegadores: o monitor 24 h lê o feed e publica o resumo em situacao.json
+const tituloEvento = s => String(s||"Alerta").toLowerCase().replace(/^./,c=>c.toUpperCase());
+async function atualizarSituacao(){
+  try{ S.situacao = await getJSON(SITUACAO_URL+"?t="+Date.now()); S.situacaoErro=false; }
+  catch{ S.situacaoErro=true; }
+  const agora=Date.now();
+  S.dc = (S.situacao?.defesaCivil||[])
+    .filter(a=>!a.fim || new Date(a.fim.replace(" ","T")) > agora)
+    .map(a=>({...a, descricao:tituloEvento(a.evento), riscos:a.texto, grupo:"hoje"}));
+  juntarAvisos(); renderMonitor();
+}
+function juntarAvisos(){ S.avisos=[...S.dc,...S.inmet]; renderAvisos(); recalcular(); }
 function renderAvisos(){
   const box=$("lista-avisos");
-  if(S.erroAvisos){box.innerHTML='<div class="vazio">INMET não respondeu. Confira em <a href="https://alertas2.inmet.gov.br" target="_blank" rel="noopener">alertas2.inmet.gov.br</a>.</div>';return}
-  if(!S.avisos.length){box.innerHTML='<div class="vazio">Nenhum aviso do INMET para Jaborandi agora.</div>';return}
+  if(!S.avisos.length){
+    box.innerHTML = S.erroAvisos
+      ? '<div class="vazio">O INMET não respondeu agora. Confira em <a href="https://alertas2.inmet.gov.br" target="_blank" rel="noopener">alertas2.inmet.gov.br</a>.</div>'
+      : '<div class="vazio">Nenhum aviso do INMET ou da Defesa Civil para Jaborandi agora.</div>';
+    return;
+  }
   box.innerHTML=S.avisos.map((a,i)=>`<button class="aviso" type="button" data-aviso="${i}" style="--c:${esc(a.aviso_cor)}">
     <span class="aviso-ico" aria-hidden="true">${emojiEvento(a.descricao)}</span>
-    <span class="aviso-txt"><b>${esc(a.descricao)}</b><span class="sev">${esc(a.severidade)}</span><small>${esc(quando(a))}</small></span></button>`).join("");
+    <span class="aviso-txt"><span class="fonte-tag${a.fonte==="Defesa Civil"?" dc":""}">${esc(a.fonte||"INMET")}</span><b>${esc(a.descricao)}</b><span class="sev">${esc(a.severidade)}</span>
+    ${a.fonte==="Defesa Civil"?`<small class="dc-txt">${esc(a.texto)}</small>`:""}<small>${esc(quando(a))}</small></span></button>`).join("")
+    + (S.erroAvisos?'<div class="vazio">O INMET não respondeu agora; mostrando só a Defesa Civil.</div>':"");
   box.querySelectorAll("[data-aviso]").forEach(b=>b.onclick=()=>{const a=S.avisos[+b.dataset.aviso];Mapa.focarAviso(a);$("aviso-detalhe").hidden=false;
-    $("aviso-detalhe").innerHTML=`<b>${esc(a.descricao)} · ${esc(a.severidade)}</b><p>${esc(a.riscos)}</p><p class="mut">${esc(a.instrucoes||"")}</p>`});
+    $("aviso-detalhe").innerHTML=`<b>${esc(a.fonte||"INMET")}: ${esc(a.descricao)} · ${esc(a.severidade)}</b><p>${esc(a.riscos)}</p><p class="mut">${esc(a.instrucoes||"")}${a.remetente?" · "+esc(a.remetente):""}</p>`});
+}
+// Status do monitor que manda os alertas para o celular
+function renderMonitor(){
+  const el=$("monitor-status"); if(!el) return;
+  const t=S.situacao?.atualizado ? new Date(S.situacao.atualizado) : null;
+  if(!t){ el.dataset.ok="?"; el.textContent = S.situacaoErro ? "Alertas no celular: não deu para conferir o monitor agora." : "Alertas no celular: conferindo o monitor…"; return; }
+  const min=Math.round((Date.now()-t)/60e3), ok=min<=25;
+  el.dataset.ok = ok?"sim":"nao";
+  const idade = min<1?"agora mesmo":min<60?`há ${min} min`:`há ${Math.floor(min/60)} h ${min%60} min`;
+  el.textContent = ok
+    ? `Alertas no celular ativos · o monitor conferiu INMET, Defesa Civil e radar ${idade}`
+    : `Monitor do celular parado: última verificação ${idade}. Os alertas no celular não estão chegando.`;
+}
+
+/* ---------- radar de chuva: lê a imagem do radar em volta de Jaborandi ---------- */
+const NOME_INT=["","fraca","moderada a forte","muito forte"];
+function intensidadeCor(r,g,b){ return r>200&&g<120?3 : r>200?2 : 1; }
+function distKm(la1,lo1,la2,lo2){const r=Math.PI/180,a=Math.sin((la2-la1)*r/2)**2+Math.cos(la1*r)*Math.cos(la2*r)*Math.sin((lo2-lo1)*r/2)**2;return 12742*Math.asin(Math.sqrt(a))}
+function rumo(la1,lo1,la2,lo2){const r=Math.PI/180,y=Math.sin((lo2-lo1)*r)*Math.cos(la2*r),x=Math.cos(la1*r)*Math.sin(la2*r)-Math.sin(la1*r)*Math.cos(la2*r)*Math.cos((lo2-lo1)*r);
+  return ["norte","nordeste","leste","sudeste","sul","sudoeste","oeste","noroeste"][Math.round(((Math.atan2(y,x)/r)+360)%360/45)%8]}
+async function quadroRadar(host,caminho,raioKm=60){
+  const Z=7,n=2**Z,s=Math.sin(LOCAL.lat*Math.PI/180);
+  const cx=(LOCAL.lon+180)/360*n*256, cy=(0.5-Math.log((1+s)/(1-s))/(4*Math.PI))*n*256;
+  const kmPx=40075*Math.cos(LOCAL.lat*Math.PI/180)/(n*256), rPx=Math.ceil(raioKm/kmPx);
+  const x0=Math.floor((cx-rPx)/256),x1=Math.floor((cx+rPx)/256),y0=Math.floor((cy-rPx)/256),y1=Math.floor((cy+rPx)/256);
+  const cv=document.createElement("canvas"); cv.width=(x1-x0+1)*256; cv.height=(y1-y0+1)*256;
+  const ctx=cv.getContext("2d",{willReadFrequently:true}), pedidos=[];
+  for(let tx=x0;tx<=x1;tx++) for(let ty=y0;ty<=y1;ty++) pedidos.push(new Promise((ok,erro)=>{const im=new Image();im.crossOrigin="anonymous";
+    im.onload=()=>{ctx.drawImage(im,(tx-x0)*256,(ty-y0)*256);ok()};im.onerror=()=>erro(new Error("radar"));im.src=`${host}${caminho}/256/${Z}/${tx}/${ty}/2/1_1.png`}));
+  await Promise.all(pedidos);
+  const d=ctx.getImageData(0,0,cv.width,cv.height).data; let perto=null, aqui=0;
+  for(let py=Math.floor(cy-rPx);py<=cy+rPx;py++) for(let px=Math.floor(cx-rPx);px<=cx+rPx;px++){
+    const i=((py-y0*256)*cv.width+(px-x0*256))*4; if(d[i+3]<40) continue;
+    const plon=(px+.5)/(n*256)*360-180, plat=Math.atan(Math.sinh(Math.PI*(1-2*(py+.5)/(n*256))))*180/Math.PI, km=distKm(LOCAL.lat,LOCAL.lon,plat,plon);
+    if(km>raioKm) continue; const it=intensidadeCor(d[i],d[i+1],d[i+2]);
+    if(km<=8) aqui=Math.max(aqui,it);
+    if(!perto||km<perto.km) perto={km,lat:plat,lon:plon,it};
+  }
+  return {perto,aqui};
+}
+async function analisarRadar(){
+  try{
+    const info=await Mapa.recarregarRadar(), q=info.quadros, ult=q[q.length-1], ant=q[Math.max(0,q.length-4)];
+    const a=await quadroRadar(info.host,ult.path); let b=null;
+    if(ant!==ult) b=await quadroRadar(info.host,ant.path).catch(()=>null);
+    const r={hora:new Date(ult.time*1000), chovendo:a.aqui>0, intensidadeAqui:NOME_INT[a.aqui]};
+    if(a.perto) r.perto={km:Math.round(a.perto.km), direcao:rumo(LOCAL.lat,LOCAL.lon,a.perto.lat,a.perto.lon), intensidade:NOME_INT[a.perto.it]};
+    if(a.perto&&b?.perto){const dif=b.perto.km-a.perto.km; r.tendencia=dif>4?"se aproximando":dif<-4?"se afastando":"quase parada"}
+    else if(a.perto&&b&&!b.perto) r.tendencia="se formando";
+    S.radar=r; S.radarErro=false; carimbar("radar");
+  }catch(e){ console.warn(e); S.radarErro=true; }
+  renderRadar(); recalcular();
+}
+function renderRadar(){
+  const el=$("radar-agora"); if(!el) return; const r=S.radar;
+  if(!r){ el.dataset.nivel="?"; el.innerHTML = S.radarErro ? "Radar indisponível agora. Veja o <a href=\"https://www.ipmetradar.com.br\" target=\"_blank\" rel=\"noopener\">radar do IPMet</a>." : "Lendo o radar…"; return; }
+  const h=`<b>Radar ${hhmm(r.hora)}</b>`;
+  if(r.chovendo){ el.dataset.nivel=/forte/.test(r.intensidadeAqui)?"laranja":"amarelo"; el.innerHTML=`${h} 🌧️ Chovendo em Jaborandi agora (chuva ${esc(r.intensidadeAqui)}).`; }
+  else if(r.perto){ el.dataset.nivel=r.perto.km<=30&&r.tendencia==="se aproximando"?"amarelo":"ok";
+    el.innerHTML=`${h} Sem chuva na cidade. Chuva mais próxima: ${esc(r.perto.intensidade)}, a ${r.perto.km} km a ${esc(r.perto.direcao)}${r.tendencia?", "+esc(r.tendencia):""}.`; }
+  else { el.dataset.nivel="ok"; el.innerHTML=`${h} Sem chuva num raio de 60 km.`; }
 }
 
 /* ---------- previsão principal + cidades ---------- */
@@ -130,18 +209,18 @@ function recalcular(){
   if(!S.prev) return;
   const dia=S.dia, p=prevDoDia(dia), dataDia=S.prev.daily.time[dia];
   const avDia = dia===0 ? S.avisos : avisosDoDia(S.avisos,dataDia);
-  let R=avaliarRiscos(p,avDia); if(dia>0) R=R.map(r=>({...r,quando:""}));
+  let R=avaliarRiscos(p,avDia,dia===0?S.radar:null); if(dia>0) R=R.map(r=>({...r,quando:""}));
   const G=cuidadosPorGrupo(R);
   // nível geral (cabeçalho e mapa)
   const nivelHoje=nivelDoDia(avisosDoDia(S.avisos,S.prev.daily.time[0]));
-  const b0=montarBoletim(S.prev,S.avisos,avaliarRiscos(S.prev,S.avisos),cuidadosPorGrupo(avaliarRiscos(S.prev,S.avisos)));
+  const R0=avaliarRiscos(S.prev,S.avisos,S.radar), G0=cuidadosPorGrupo(R0), b0=montarBoletim(S.prev,S.avisos,R0,G0);
   document.documentElement.dataset.nivel=b0.nivelGeral;
   $("nivel-geral").textContent=b0.chamada;
   Mapa.desenharAvisos(S.avisos,nivelHoje);
   $("rec-titulo").textContent = dia===0?"hoje e amanhã":new Date(dataDia+"T12:00").toLocaleDateString("pt-BR",{weekday:"long",day:"2-digit",month:"2-digit"});
   renderRiscos(R); renderGrupos(G);
   // cards e texto sempre do dia de hoje
-  const R0=avaliarRiscos(S.prev,S.avisos), G0=cuidadosPorGrupo(R0), b=montarBoletim(S.prev,S.avisos,R0,G0);
+  const b=b0;
   setMsg(b.texto);
   (document.fonts?.ready||Promise.resolve()).then(()=>{try{desenharCards(S.prev,S.avisos,R0,G0,b)}catch(e){console.error(e)}});
 }
@@ -157,7 +236,7 @@ function renderGrupos(G){
   const sel=S.grupoAberto&&GRUPOS.find(g=>g.id===S.grupoAberto);
   if(sel){
     const nomes={tempestade:"⛈️ Tempestade",chuva:"🌧️ Chuva",calor:"🌡️ Calor",seco:"🏜️ Ar seco",base:"📋 No dia a dia"};
-    const at=tiposAtivos(avaliarRiscos(prevDoDia(S.dia),S.dia===0?S.avisos:avisosDoDia(S.avisos,S.prev.daily.time[S.dia])));
+    const at=tiposAtivos(avaliarRiscos(prevDoDia(S.dia),S.dia===0?S.avisos:avisosDoDia(S.avisos,S.prev.daily.time[S.dia]),S.dia===0?S.radar:null));
     $("grupos").innerHTML=`<article class="grupo aberto"><header><span class="ge">${sel.emoji}</span><h3>${esc(sel.nome)}</h3></header>
       <ul class="todas">${Object.entries(sel.dicas).map(([k,v])=>`<li class="${at.has(k)?"ativo":""}"><b>${nomes[k]||k}${at.has(k)?" · risco agora":""}</b>${esc(v)}</li>`).join("")}</ul></article>`;
   } else {
@@ -181,19 +260,27 @@ function prepararNotif(){ if(!("Notification" in window)) return;
 function notificarNovos(avisos){
   const vistos=new Set(store.get("avisosVistos")||[]), novos=avisos.filter(a=>!vistos.has(a.codigo));
   if(novos.length&&vistos.size&&"Notification" in window&&Notification.permission==="granted")
-    novos.forEach(a=>new Notification("Novo aviso INMET – Jaborandi",{body:`${a.descricao} (${a.severidade}) – ${quando(a)}`}));
-  if(novos.length&&vistos.size) aviso(`Novo aviso do INMET: ${novos[0].descricao} (${novos[0].severidade})`);
+    novos.forEach(a=>new Notification(`Novo aviso ${a.fonte||"INMET"} – Jaborandi`,{body:`${a.descricao} (${a.severidade}) – ${a.texto||quando(a)}`}));
+  if(novos.length&&vistos.size) aviso(`Novo aviso (${novos[0].fonte||"INMET"}): ${novos[0].descricao} (${novos[0].severidade})`);
   store.set("avisosVistos",avisos.map(a=>a.codigo));
 }
 
 /* ---------- ciclo automático ---------- */
 let intervaloMin = store.get("intervaloMin") || 5, auto = store.get("auto") ?? true, proxima = 0;
+let atualizando=false;
 async function atualizarTudo(){
+  // evita cargas repetidas enquanto a anterior ainda não terminou
+  if(atualizando) return; atualizando=true;
+  try{ await atualizarTudoAgora(); } finally { atualizando=false; }
+}
+async function atualizarTudoAgora(){
+  proxima = Date.now()+intervaloMin*60e3;
   $("status-txt").textContent="Atualizando…";
-  await Promise.allSettled([atualizarAvisos(),atualizarPrevisao(),atualizarFontes()]);
+  await Promise.allSettled([atualizarAvisos(),atualizarSituacao(),atualizarPrevisao(),atualizarFontes(),analisarRadar()]);
+  notificarNovos(S.avisos);
   Mapa.recarregarNuvens(); Mapa.recarregarChuva(); if(Mapa.ventoLigado()) Mapa.carregarVento().catch(()=>{});
   carimbar("mapa");
-  const ok=!S.erroAvisos&&S.prev&&S.fontes;
+  const ok=!S.erroAvisos&&!S.situacaoErro&&!S.radarErro&&S.prev&&S.fontes;
   $("status").dataset.ok=ok?"sim":"nao";
   $("status-txt").textContent=ok?"AO VIVO":"PARCIAL";
   proxima = Date.now()+intervaloMin*60e3;
@@ -213,13 +300,14 @@ $("btn-auto").onclick=()=>{auto=!auto;store.set("auto",auto);$("btn-auto").setAt
 $("btn-auto").textContent=auto?"Automático ligado":"Automático pausado";
 $("btn-tudo").onclick=e=>girar(e.currentTarget,atualizarTudo);
 document.querySelectorAll("[data-atualizar]").forEach(b=>b.onclick=()=>girar(b,{
-  avisos:atualizarAvisos, agora:atualizarPrevisao, fontes:atualizarFontes,
-  mapa:async()=>{Mapa.recarregarNuvens();Mapa.recarregarChuva();if(Mapa.ventoLigado())await Mapa.carregarVento();carimbar("mapa")}
+  avisos:()=>Promise.allSettled([atualizarAvisos(),atualizarSituacao()]), agora:()=>Promise.allSettled([atualizarPrevisao(),analisarRadar()]), fontes:atualizarFontes,
+  mapa:async()=>{await analisarRadar();Mapa.recarregarNuvens();Mapa.recarregarChuva();if(Mapa.ventoLigado())await Mapa.carregarVento();carimbar("mapa")}
 }[b.dataset.atualizar]));
 document.addEventListener("visibilitychange",()=>{ if(!document.hidden && auto && Date.now()>proxima) atualizarTudo(); });
 
 prepararNotif();
 setInterval(()=>{tick();contagem()},1000);
+setInterval(renderMonitor,30e3);
 atualizarTudo();
 
 // logo

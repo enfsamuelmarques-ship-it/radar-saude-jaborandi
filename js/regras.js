@@ -21,8 +21,17 @@ function quando(a){
 }
 
 const COR={verde:"var(--ok)",amarelo:"var(--amarelo)",laranja:"var(--laranja)",vermelho:"var(--vermelho)"};
-function avaliarRiscos(p,avisos){
+function avaliarRiscos(p,avisos,radar){
   const d=p.daily, R=[];
+  // Chuva vista pelo radar agora (só para o dia de hoje)
+  if(radar){
+    const forte=s=>/forte/.test(s||"");
+    if(radar.chovendo) R.push(forte(radar.intensidadeAqui)
+      ? {nivel:"laranja",rotulo:"Agora · radar",titulo:"Chuva forte agora em Jaborandi",quando:"",dicas:["Não atravesse ruas ou córregos alagados","Fique longe de árvores e campo aberto durante os raios"]}
+      : {nivel:"amarelo",rotulo:"Agora · radar",titulo:"Chovendo agora em Jaborandi",quando:"",dicas:["Cuidado com piso molhado e pistas escorregadias"]});
+    else if(radar.perto&&radar.perto.km<=30&&radar.tendencia==="se aproximando")
+      R.push({nivel:forte(radar.perto.intensidade)?"laranja":"amarelo",rotulo:"Atenção · radar",titulo:`Chuva se aproximando (${radar.perto.km} km a ${radar.perto.direcao})`,quando:"",dicas:["Recolha roupas e objetos soltos e evite sair na próxima hora"]});
+  }
   const dia=i=>({tmax:d.temperature_2m_max[i],sens:d.apparent_temperature_max[i],chuva:d.precipitation_sum[i],prob:d.precipitation_probability_max[i],
     umid:d.relative_humidity_2m_min[i],raj:d.wind_gusts_10m_max[i],uv:d.uv_index_max[i],code:d.weather_code[i]});
   const h=dia(0), a=dia(1);
@@ -142,8 +151,8 @@ function montarBoletim(p,avisos,R,G){
   L_.push(faixa);
   L_.push("");
   if(avisos.length){
-    L_.push("🚨 *AVISOS OFICIAIS DO INMET*");
-    avisos.forEach(a=>L_.push(`> ${emojiAviso(a)} ${emojiEvento(a.descricao)} *${a.descricao}* · ${a.severidade}\n> 🕒 ${quando(a)}`));
+    L_.push("🚨 *AVISOS OFICIAIS*");
+    avisos.forEach(a=>L_.push(`> ${emojiAviso(a)} ${emojiEvento(a.descricao)} *${a.descricao}* · ${a.severidade} (${a.fonte||"INMET"})\n> 🕒 ${quando(a)}`));
     L_.push("");
   }
   L_.push(`${emojiTempo(c.weather_code)} *AGORA:* ${fmt(c.temperature_2m)}°C · ${(WMO[c.weather_code]||"").toLowerCase()}`);
@@ -168,7 +177,7 @@ function montarBoletim(p,avisos,R,G){
   L_.push("☎️ *EMERGÊNCIAS*");
   L_.push("🟠 *199* Defesa Civil · 🚒 *193* Bombeiros · 🚑 *192* SAMU");
   L_.push("");
-  L_.push("📡 _Fontes: INMET (avisos oficiais) e Open-Meteo (previsão)_");
+  L_.push("📡 _Fontes: INMET e Defesa Civil (avisos oficiais), radar RainViewer e Open-Meteo (previsão)_");
   L_.push("🏥 *"+ASSINATURA+"*");
   return {texto:L_.join("\n"),nivelGeral,chamada};
 }

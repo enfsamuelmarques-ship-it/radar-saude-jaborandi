@@ -80,6 +80,18 @@ button:disabled{opacity:.6;cursor:wait}
 .aviso small{flex-basis:100%;color:var(--mut);font-size:.76rem}
 #aviso-detalhe{grid-column:1/-1;padding:14px 18px;border-radius:14px;background:var(--painel);box-shadow:var(--sombra);font-size:.9rem}
 #aviso-detalhe p{margin:.4em 0 0}
+.fonte-tag{font-size:.66rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:2px 7px;border-radius:99px;background:var(--painel2);color:var(--mut)}
+.fonte-tag.dc{background:#13262b;color:#fff}
+.aviso small.dc-txt{color:var(--fg);font-size:.8rem}
+#monitor-status{margin:6px 2px 0;font-size:.78rem;color:var(--mut);display:flex;gap:7px;align-items:center}
+#monitor-status::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--mut);flex:none}
+#monitor-status[data-ok="sim"]::before{background:var(--ok)}
+#monitor-status[data-ok="nao"]{color:var(--vermelho);font-weight:600}
+#monitor-status[data-ok="nao"]::before{background:var(--vermelho)}
+.radar-agora{--c:var(--ok);font-size:.84rem;line-height:1.4;padding:9px 12px;border-radius:12px;background:var(--painel2);box-shadow:inset 3px 0 0 var(--c)}
+.radar-agora[data-nivel="amarelo"]{--c:var(--amarelo)}
+.radar-agora[data-nivel="laranja"]{--c:var(--laranja)}
+.radar-agora[data-nivel="?"]{--c:var(--mut)}
 .vazio{padding:10px 14px;border-radius:12px;background:var(--painel);color:var(--mut);box-shadow:var(--sombra)}
 
 /* grade principal */
@@ -230,10 +242,11 @@ textarea{width:100%;min-height:300px;margin-top:10px;font:13px/1.5 var(--f-body)
 </header>
 
 <section class="faixa" aria-labelledby="t-avisos">
-  <div style="display:flex;gap:8px;align-items:center"><h2 id="t-avisos">Avisos INMET</h2>
-    <button type="button" class="ref" data-atualizar="avisos" aria-label="Atualizar avisos do INMET" title="Atualizar avisos">↻</button></div>
-  <div id="lista-avisos"><div class="vazio">Consultando o INMET…</div></div>
+  <div style="display:flex;gap:8px;align-items:center"><h2 id="t-avisos">Avisos oficiais · INMET e Defesa Civil</h2>
+    <button type="button" class="ref" data-atualizar="avisos" aria-label="Atualizar avisos oficiais" title="Atualizar avisos">↻</button></div>
+  <div id="lista-avisos"><div class="vazio">Consultando o INMET e a Defesa Civil…</div></div>
   <div id="aviso-detalhe" hidden></div>
+  <p id="monitor-status" role="status" data-ok="?">Alertas no celular: conferindo o monitor…</p>
 </section>
 
 <div class="principal">
@@ -254,6 +267,7 @@ textarea{width:100%;min-height:300px;margin-top:10px;font:13px/1.5 var(--f-body)
         <button type="button" data-prod="ir" aria-pressed="false">🌡️ Infravermelho</button>
         <button type="button" data-prod="off" aria-pressed="false">Sem nuvens</button>
         <hr>
+        <button type="button" data-cam="radar" aria-pressed="true">📡 Radar de chuva</button>
         <button type="button" data-cam="chuva" aria-pressed="false">🌧️ Chuva satélite</button>
         <button type="button" data-cam="vento" aria-pressed="false">💨 Vento</button>
         <button type="button" data-cam="avisos" aria-pressed="true">⚠️ Avisos</button>
@@ -266,14 +280,16 @@ textarea{width:100%;min-height:300px;margin-top:10px;font:13px/1.5 var(--f-body)
         <label>opacidade <input type="range" id="sat-opac" min="20" max="100" value="55" aria-label="Opacidade das nuvens"></label>
       </div>
     </div>
-    <p class="mut" style="margin:0;font-size:.78rem">Toque em qualquer ponto do mapa para ver o tempo daquele lugar. As imagens do satélite GOES-East chegam com 40 a 90 minutos de atraso. Para ver a chuva neste exato momento, use também o <a href="https://www.ipmetradar.com.br" target="_blank" rel="noopener">radar do IPMet</a>. As áreas de aviso tracejadas valem para os próximos dias.</p>
+    <p class="mut" style="margin:0;font-size:.78rem">O radar de chuva (manchas azuis, amarelas e vermelhas) mostra a chuva de 10 a 20 minutos atrás. As nuvens do satélite GOES-East chegam com 40 a 90 minutos de atraso. Toque em qualquer ponto do mapa para ver a previsão daquele lugar. Áreas de aviso tracejadas valem para os próximos dias. Radar regional detalhado: <a href="https://www.ipmetradar.com.br" target="_blank" rel="noopener">IPMet</a>.</p>
   </section>
 
   <aside class="painel" aria-labelledby="t-agora">
     <div class="cab"><h2 id="t-agora">Agora em Jaborandi</h2>
       <div class="dir"><span data-carimbo="agora"></span><button type="button" class="ref" data-atualizar="agora" aria-label="Atualizar condições atuais" title="Atualizar">↻</button></div></div>
     <div class="agora"><span id="a-ico" aria-hidden="true">⛅</span>
-      <div><div id="a-temp" class="num">--°</div><div id="a-desc">—</div><div class="mut" id="a-sens" style="font-size:.85rem"></div></div></div>
+      <div><div id="a-temp" class="num">--°</div><div id="a-desc">—</div><div class="mut" id="a-sens" style="font-size:.85rem"></div>
+        <div class="mut" style="font-size:.72rem">estimativa do modelo de previsão</div></div></div>
+    <div class="radar-agora" id="radar-agora" data-nivel="?" role="status">Lendo o radar…</div>
     <div class="medidores">
       <div class="medidor" id="m-umid"><span>Umidade</span><span class="trilho"><i></i></span><b>--</b><em></em></div>
       <div class="medidor" id="m-vento"><span>Rajada</span><span class="trilho"><i></i></span><b>--</b><em></em></div>
@@ -294,7 +310,7 @@ textarea{width:100%;min-height:300px;margin-top:10px;font:13px/1.5 var(--f-body)
     <div class="cab"><h2 id="t-fontes">Confirmação entre 4 modelos · próximas 6 h</h2>
       <div class="dir"><span data-carimbo="fontes"></span><button type="button" class="ref" data-atualizar="fontes" aria-label="Atualizar modelos" title="Atualizar">↻</button></div></div>
     <div class="consenso" id="consenso"><div class="rad"><span id="consenso-n">-/-</span></div>
-      <div><div id="consenso-txt">Consultando…</div><div class="mut" style="font-size:.8rem">modelos que preveem tempestade. O aviso oficial é sempre o do INMET.</div></div></div>
+      <div><div id="consenso-txt">Consultando…</div><div class="mut" style="font-size:.8rem">modelos que preveem tempestade. Valem sempre os avisos do INMET e da Defesa Civil.</div></div></div>
     <div id="modelos"></div>
   </section>
   <section class="painel" aria-labelledby="t-2h">
@@ -333,7 +349,7 @@ textarea{width:100%;min-height:300px;margin-top:10px;font:13px/1.5 var(--f-body)
 <footer class="fontes">
   <b>Fontes</b>
   <ul>
-    <li>Avisos oficiais: <a href="https://alertas2.inmet.gov.br" target="_blank" rel="noopener">INMET</a> · Radar regional: <a href="https://www.ipmetradar.com.br" target="_blank" rel="noopener">IPMet/Unesp</a></li>
+    <li>Avisos oficiais: <a href="https://alertas2.inmet.gov.br" target="_blank" rel="noopener">INMET</a> e Defesa Civil (alertas enviados à população, <a href="https://www.gov.br/mdr/pt-br/assuntos/protecao-e-defesa-civil" target="_blank" rel="noopener">IDAP/MIDR</a>) · Radar de chuva: <a href="https://www.rainviewer.com" target="_blank" rel="noopener">RainViewer</a> · Radar regional: <a href="https://www.ipmetradar.com.br" target="_blank" rel="noopener">IPMet/Unesp</a></li>
     <li>Previsão: <a href="https://open-meteo.com" target="_blank" rel="noopener">Open-Meteo</a>, comparando ECMWF (Centro Europeu), GFS (NOAA, EUA), ICON (Serviço Meteorológico Alemão) e UK Met Office</li>
     <li>Satélite: GOES-East (NOAA) e chuva NASA IMERG, via <a href="https://worldview.earthdata.nasa.gov" target="_blank" rel="noopener">NASA GIBS</a> · Mapas: Esri · Limites municipais: IBGE</li>
   </ul>

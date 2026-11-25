@@ -12,7 +12,8 @@
     "chuva_2h_mm": 15,
     "modelos_minimos_tempestade": 2,
     "sensacao_calor_c": 38,
-    "umidade_baixa_pct": 20
+    "umidade_baixa_pct": 20,
+    "radar_aproximacao_km": 30
   },
   "resumo_diario_hora": 6
 }

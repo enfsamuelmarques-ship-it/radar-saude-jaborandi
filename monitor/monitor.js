@@ -1,7 +1,8 @@
 // Monitor de tempo e saúde – Jaborandi/SP
-// Roda a cada 10 minutos (Agendador de Tarefas do Windows) e manda alerta para o celular pelo app ntfy.
-// Fontes: INMET (avisos oficiais) + Open-Meteo com 4 modelos (ECMWF, NOAA/GFS, DWD/ICON, UK Met Office)
-// e previsão de 15 em 15 minutos para as próximas 2 horas.
+// Roda a cada 10 minutos no GitHub Actions e manda alerta para o celular pelo app ntfy.
+// Fontes: INMET (avisos oficiais), Defesa Civil (alertas enviados à população), radar de chuva (RainViewer),
+// Open-Meteo com 4 modelos (ECMWF, NOAA/GFS, DWD/ICON, UK Met Office) e previsão de 15 em 15 minutos.
+// A cada rodada grava situacao.json, que o painel lê para mostrar a Defesa Civil e o estado do monitor.
 //
 // Uso:
 //   node monitor.js            -> verifica e manda alertas novos
@@ -19,6 +20,8 @@ CFG.ntfy_topico = process.env.NTFY_TOPICO || (fs.existsSync(path.join(PASTA, "to
 if (!CFG.ntfy_topico) { console.error("Sem tópico do ntfy (NTFY_TOPICO ou topico.txt)"); process.exit(1); }
 const ARQ_ESTADO = path.join(PASTA, "estado.json");
 const ARQ_LOG = path.join(PASTA, "monitor.log");
+const ARQ_SITUACAO = path.join(PASTA, "situacao.json");
+const { alertasDefesaCivil, radarDeChuva } = require("./fontes-extras.js");
 const ARGS = process.argv.slice(2);
 const SO_VER = ARGS.includes("--ver");
 
@@ -113,6 +116,58 @@ async function verificarInmet(est, alertas) {
   }
 }
 
+async function verificarDefesaCivil(est, alertas) {
+  try {
+    const lista = await alertasDefesaCivil(CFG);
+    est.falhasDC = 0;
+    est.dcVistos = est.dcVistos || [];
+    const sev = { "Perigo Potencial": ["🟡", 4, "yellow_circle"], "Perigo": ["🟠", 4, "orange_circle"], "Grande Perigo": ["🔴", 5, "red_circle"] };
+    for (const a of lista) {
+      if (est.dcVistos.includes(a.codigo)) continue;
+      const [emo, pri, tag] = sev[a.severidade] || ["⚠️", 4, "warning"];
+      const ate = a.fim ? `
+🕒 Válido até ${a.fim.slice(11)}${a.fim.slice(0, 10) !== hojeISO() ? " de " + a.fim.slice(8, 10) + "/" + a.fim.slice(5, 7) : ""}` : "";
+      alertas.push({
+        titulo: `${emo} Defesa Civil: ${a.evento.toLowerCase().replace(/^./, c => c.toUpperCase())}`,
+        mensagem: `${a.texto}${ate}
+${a.remetente}`,
+        prioridade: pri, tags: [tag, "rotating_light"], marcarDC: a.codigo,
+      });
+    }
+    est.dcVistos = est.dcVistos.filter(c => lista.some(a => a.codigo === c));
+    return lista;
+  } catch (e) {
+    est.falhasDC = (est.falhasDC || 0) + 1;
+    log("Defesa Civil indisponível: " + e.message);
+    if (est.falhasDC === 6 && podeEnviar(est, "falha-dc", 12))
+      alertas.push({ titulo: "⚙️ Monitor: Defesa Civil fora do ar", mensagem: "Há 1 hora o feed de alertas da Defesa Civil não responde. Os alertas por WhatsApp/SMS da Defesa Civil continuam valendo.", prioridade: 2, tags: ["gear"], chave: "falha-dc", horas: 12 });
+    return null;
+  }
+}
+
+async function verificarRadar(est, alertas) {
+  try {
+    const r = await radarDeChuva(CFG, 60);
+    const L = CFG.limites, p = r.maisProxima, forte = s => /forte/.test(s || "");
+    if (r.chovendoEmJaborandi) {
+      const nivel = forte(r.intensidadeEmJaborandi) ? 2 : 1;
+      if (podeEnviar(est, "radar-jab", 3, nivel)) alertas.push({
+        titulo: nivel === 2 ? "🌧️ Chuva forte sobre Jaborandi agora" : "🌦️ Chovendo em Jaborandi agora",
+        mensagem: `O radar mostra chuva ${r.intensidadeEmJaborandi} sobre a cidade${nivel === 2 ? ". Atenção a alagamentos e raios" : ""}.`,
+        prioridade: nivel === 2 ? 4 : 2, tags: ["cloud_with_rain"], chave: "radar-jab", horas: 3, nivel,
+      });
+    } else if (p && p.km <= L.radar_aproximacao_km && r.tendencia === "se aproximando") {
+      const nivel = forte(p.intensidade) ? 2 : 1;
+      if (podeEnviar(est, "radar-aprox", 2, nivel)) alertas.push({
+        titulo: `${nivel === 2 ? "⛈️" : "🌦️"} Chuva a ${p.km} km, vindo para Jaborandi`,
+        mensagem: `O radar mostra chuva ${p.intensidade} a ${p.km} km, a ${p.direcao}, chegando mais perto (${r.kmEm30min} km em 30 min).`,
+        prioridade: nivel === 2 ? 4 : 3, tags: ["umbrella"], chave: "radar-aprox", horas: 2, nivel,
+      });
+    }
+    return r;
+  } catch (e) { log("Radar indisponível: " + e.message); return null; }
+}
+
 async function verificarModelos(est, alertas) {
   const L = CFG.limites;
   const base = `https://api.open-meteo.com/v1/forecast?latitude=${CFG.latitude}&longitude=${CFG.longitude}&timezone=America%2FSao_Paulo`;
@@ -192,13 +247,15 @@ async function verificarDia(est, alertas, avisos) {
 
 async function principal() {
   if (ARGS.includes("--teste")) {
-    await enviar({ titulo: "✅ Teste: alertas de Jaborandi funcionando", mensagem: "Você vai receber aqui os avisos do INMET, riscos de tempestade, ventos fortes, chuva forte, calor e ar seco.", prioridade: 3, tags: ["white_check_mark"] });
+    await enviar({ titulo: "✅ Teste: alertas de Jaborandi funcionando", mensagem: "Você vai receber aqui os avisos do INMET e da Defesa Civil, chuva vista pelo radar, riscos de tempestade, ventos fortes, calor e ar seco.", prioridade: 3, tags: ["white_check_mark"] });
     return;
   }
   const est = lerEstado();
   est.enviados = est.enviados || {};
   const alertas = [];
   const avisos = await verificarInmet(est, alertas);
+  const dc = await verificarDefesaCivil(est, alertas);
+  const radar = await verificarRadar(est, alertas);
   const modelos = await verificarModelos(est, alertas);
   await verificarDia(est, alertas, avisos);
 
@@ -209,6 +266,7 @@ async function principal() {
       await enviar(a);
       if (SO_VER) continue;
       if (a.marcarAviso) est.avisosVistos.push(a.marcarAviso);
+      if (a.marcarDC) est.dcVistos.push(a.marcarDC);
       if (a.chave) marcar(est, a.chave, a.nivel || 0);
       if (a.resumo) est.ultimoResumo = a.resumo;
     } catch (e) { log("Falha ao enviar alerta: " + e.message); }
@@ -218,7 +276,17 @@ async function principal() {
   // limpa marcações antigas (mais de 3 dias)
   for (const k of Object.keys(est.enviados)) if (Date.now() - est.enviados[k].t > 72 * 3600e3) delete est.enviados[k];
   if (!SO_VER) salvarEstado(est);
-  log(`Verificação concluída: ${alertas.length} alerta(s) ${SO_VER ? "(só ver)" : "novo(s)"}; modelos lidos: ${modelos.modelos.length}; INMET: ${avisos ? avisos.length + " aviso(s)" : "sem resposta"}`);
+  // resumo público para o painel (sem o tópico do ntfy)
+  const situacao = {
+    atualizado: est.ultimaVerificacao,
+    intervaloMin: 10,
+    defesaCivil: dc, defesaCivilOk: dc !== null,
+    radar,
+    inmet: avisos ? est.avisosAtivos : null,
+  };
+  try { fs.writeFileSync(ARQ_SITUACAO, JSON.stringify(situacao)); } catch (e) { log("Falha ao gravar situacao.json: " + e.message); }
+  const txtRadar = radar ? (radar.chovendoEmJaborandi ? "chovendo na cidade" : radar.maisProxima ? `chuva a ${radar.maisProxima.km} km (${radar.tendencia || "?"})` : "sem chuva em 60 km") : "sem resposta";
+  log(`Verificação concluída: ${alertas.length} alerta(s) ${SO_VER ? "(só ver)" : "novo(s)"}; modelos lidos: ${modelos.modelos.length}; INMET: ${avisos ? avisos.length + " aviso(s)" : "sem resposta"}; Defesa Civil: ${dc ? dc.length + " alerta(s)" : "sem resposta"}; radar: ${txtRadar}`);
   if (SO_VER) console.log(JSON.stringify(modelos, null, 2));
 }
 
