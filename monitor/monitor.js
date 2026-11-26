@@ -61,7 +61,8 @@ async function obterJSON(url, tentativas = 3) {
 
 const fmt = n => (n == null || isNaN(n)) ? "--" : Math.round(n).toString();
 const hojeISO = () => new Date().toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" });
-const horaLocal = () => Number(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo", hour: "numeric", hour12: false }));
+// hourCycle h23: com "hour12: false" o Node devolve "24" à meia-noite, e o Bom dia saía às 00h01
+const horaLocal = () => Number(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo", hour: "numeric", hourCycle: "h23" })) % 24;
 const quando = a => {
   const f = s => new Date(s.replace(" ", "T")).toLocaleString("pt-BR", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
   return `${f(a.inicio)} até ${f(a.fim)}`;
@@ -100,7 +101,7 @@ async function verificarInmet(est, alertas) {
     const lista = [];
     for (const g of ["hoje", "futuro"]) for (const a of (d[g] || []))
       if (("," + a.geocodes + ",").includes("," + CFG.ibge + ",")) lista.push(a);
-    const sev = { "Perigo Potencial": ["🟡", 3, "yellow_circle"], "Perigo": ["🟠", 4, "orange_circle"], "Grande Perigo": ["🔴", 5, "red_circle"] };
+    const sev = { "Perigo Potencial": ["🟡", 4, "yellow_circle"], "Perigo": ["🟠", 5, "orange_circle"], "Grande Perigo": ["🔴", 5, "red_circle"] };
     for (const a of lista) {
       if (est.avisosVistos.includes(a.codigo)) continue;
       const [emo, pri, tag] = sev[a.severidade] || ["⚠️", 3, "warning"];
@@ -130,7 +131,7 @@ async function verificarDefesaCivil(est, alertas) {
     const lista = await alertasDefesaCivil(CFG);
     est.falhasDC = 0;
     est.dcVistos = est.dcVistos || [];
-    const sev = { "Perigo Potencial": ["🟡", 4, "yellow_circle"], "Perigo": ["🟠", 4, "orange_circle"], "Grande Perigo": ["🔴", 5, "red_circle"] };
+    const sev = { "Perigo Potencial": ["🟡", 5, "yellow_circle"], "Perigo": ["🟠", 5, "orange_circle"], "Grande Perigo": ["🔴", 5, "red_circle"] };
     for (const a of lista) {
       if (est.dcVistos.includes(a.codigo)) continue;
       const [emo, pri, tag] = sev[a.severidade] || ["⚠️", 4, "warning"];
@@ -154,25 +155,67 @@ ${a.remetente}`,
   }
 }
 
+/* Mudanças do radar: avisa cada vez que a chuva muda de faixa de distância ou fica mais forte.
+ * Faixas: 0 = nada em 60 km · 1 = de 30 a 60 km · 2 = de 12 a 30 km · 3 = a menos de 12 km · 4 = chovendo na cidade.
+ * Chegar mais perto ou ficar mais forte avisa na hora. Para avisar que melhorou, espera 2 leituras seguidas
+ * (20 min), para não ficar apitando quando a chuva fica na beira de uma faixa. */
+const ZONA_TXT = ["sem chuva num raio de 60 km", "chuva entre 30 e 60 km", "chuva entre 12 e 30 km", "chuva a menos de 12 km", "chovendo na cidade"];
+function zonaRadar(r) {
+  const [z3, z2, z1] = CFG.limites.radar_faixas_km || [12, 30, 60];
+  if (r.chovendoEmJaborandi) return 4;
+  const km = r.maisProxima?.km;
+  if (km == null) return 0;
+  return km <= z3 ? 3 : km <= z2 ? 2 : km <= z1 ? 1 : 0;
+}
+const forcaChuva = s => /muito forte/.test(s || "") ? 3 : /forte/.test(s || "") ? 2 : s ? 1 : 0;
+function avisarMudancaRadar(est, alertas, r) {
+  const ant = est.radar || { zona: 0, forca: 0, pendente: null };
+  const zona = zonaRadar(r), p = r.maisProxima;
+  const forca = forcaChuva(zona === 4 ? r.intensidadeEmJaborandi : p?.intensidade);
+  const onde = p ? `a ${p.km} km, a ${p.direcao}` : "";
+  const tend = r.tendencia ? ` (${r.tendencia}${r.tendencia === "se aproximando" && r.kmEm30min ? `, ${r.kmEm30min} km em 30 min` : ""})` : "";
+  const hora = new Date(r.hora).toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" });
+  const rodape = `\nRadar das ${hora}.`;
+  let a = null, novo;
+
+  if (zona > ant.zona) {
+    // chuva chegou mais perto
+    if (zona === 4) a = { titulo: forca >= 2 ? "🌧️ Começou a chover forte em Jaborandi" : "🌦️ Começou a chover em Jaborandi",
+      mensagem: `O radar mostra chuva ${r.intensidadeEmJaborandi} sobre a cidade${forca >= 2 ? ". Atenção a alagamentos e raios" : ""}.`, prioridade: forca >= 2 ? 5 : 4, tags: ["cloud_with_rain"] };
+    else if (zona === 3) a = { titulo: `⚠️ Chuva chegando: ${p.km} km de Jaborandi`,
+      mensagem: `Chuva ${p.intensidade} ${onde}${tend}. Pode começar a chover na cidade em breve.`, prioridade: forca >= 2 ? 5 : 4, tags: ["umbrella"] };
+    else if (zona === 2) a = { titulo: `🌧️ Chuva a ${p.km} km de Jaborandi`,
+      mensagem: `Chuva ${p.intensidade} ${onde}${tend}.`, prioridade: forca >= 2 || r.tendencia === "se aproximando" ? 4 : 3, tags: ["cloud_with_rain"] };
+    else a = { titulo: `📡 Chuva no radar a ${p.km} km`,
+      mensagem: `Chuva ${p.intensidade} ${onde}${tend}. Ainda longe de Jaborandi.`, prioridade: 3, tags: ["satellite"] };
+    novo = { zona, forca, pendente: null };
+  } else if (zona >= 2 && zona === ant.zona && forca > (ant.forca || 0)) {
+    // mesma distância, mas a chuva ficou mais forte
+    a = { titulo: zona === 4 ? "⛈️ A chuva ficou mais forte em Jaborandi" : `⛈️ Chuva mais forte a ${p.km} km`,
+      mensagem: `Agora a chuva está ${zona === 4 ? r.intensidadeEmJaborandi + " sobre a cidade" : p.intensidade + " " + onde + tend}.`, prioridade: 5, tags: ["cloud_with_lightning_and_rain"] };
+    novo = { zona, forca, pendente: null };
+  } else if (zona < ant.zona) {
+    // melhorou: confirma na leitura seguinte
+    if (ant.pendente != null && ant.pendente >= zona) {
+      if (ant.zona === 4) a = { titulo: "✅ Parou de chover em Jaborandi",
+        mensagem: `O radar não mostra mais chuva sobre a cidade. Agora: ${zona ? `chuva ${p.intensidade} ${onde}${tend}` : ZONA_TXT[0]}.`, prioridade: 3, tags: ["white_check_mark"] };
+      else if (zona === 0) a = { titulo: "✅ A chuva se afastou de Jaborandi",
+        mensagem: "O radar não mostra chuva num raio de 60 km.", prioridade: 3, tags: ["white_check_mark"] };
+      else if (ant.zona >= 3) a = { titulo: `↘️ A chuva se afastou: agora a ${p.km} km`,
+        mensagem: `Chuva ${p.intensidade} ${onde}${tend}.`, prioridade: 3, tags: ["arrow_lower_right"] };
+      novo = { zona, forca, pendente: null };
+    } else novo = { ...ant, pendente: zona };
+  } else novo = { zona, forca: Math.max(forca, zona === ant.zona ? ant.forca || 0 : 0), pendente: null };
+
+  // o estado novo só vale depois que o alerta sair (se o envio falhar, avisa de novo na próxima rodada)
+  if (a) alertas.push({ ...a, mensagem: a.mensagem + rodape, radarEstado: novo });
+  else est.radar = novo;
+}
+
 async function verificarRadar(est, alertas) {
   try {
     const r = await radarDeChuva(CFG, 60);
-    const L = CFG.limites, p = r.maisProxima, forte = s => /forte/.test(s || "");
-    if (r.chovendoEmJaborandi) {
-      const nivel = forte(r.intensidadeEmJaborandi) ? 2 : 1;
-      if (podeEnviar(est, "radar-jab", 3, nivel)) alertas.push({
-        titulo: nivel === 2 ? "🌧️ Chuva forte sobre Jaborandi agora" : "🌦️ Chovendo em Jaborandi agora",
-        mensagem: `O radar mostra chuva ${r.intensidadeEmJaborandi} sobre a cidade${nivel === 2 ? ". Atenção a alagamentos e raios" : ""}.`,
-        prioridade: nivel === 2 ? 4 : 2, tags: ["cloud_with_rain"], chave: "radar-jab", horas: 3, nivel,
-      });
-    } else if (p && p.km <= L.radar_aproximacao_km && r.tendencia === "se aproximando") {
-      const nivel = forte(p.intensidade) ? 2 : 1;
-      if (podeEnviar(est, "radar-aprox", 2, nivel)) alertas.push({
-        titulo: `${nivel === 2 ? "⛈️" : "🌦️"} Chuva a ${p.km} km, vindo para Jaborandi`,
-        mensagem: `O radar mostra chuva ${p.intensidade} a ${p.km} km, a ${p.direcao}, chegando mais perto (${r.kmEm30min} km em 30 min).`,
-        prioridade: nivel === 2 ? 4 : 3, tags: ["umbrella"], chave: "radar-aprox", horas: 2, nivel,
-      });
-    }
+    avisarMudancaRadar(est, alertas, r);
     return r;
   } catch (e) { log("Radar indisponível: " + e.message); return null; }
 }
@@ -203,7 +246,7 @@ async function verificarModelos(est, alertas) {
       if (podeEnviar(est, "tempestade-6h", 4, nivel)) alertas.push({
         titulo: `⛈️ Risco de tempestade nas próximas 6 h`,
         mensagem: `${comTemp.length} de ${ms.length} modelos indicam tempestade em ${CFG.cidade}: ${comTemp.map(m => m.nome).join(", ")}.\nRajadas até ${fmt(rajMax)} km/h · chuva até ${fmt(chuvaMax)} mm.`,
-        prioridade: nivel === 2 ? 4 : 3, tags: ["cloud_with_lightning_and_rain"], chave: "tempestade-6h", horas: 4, nivel,
+        prioridade: 4, tags: ["cloud_with_lightning_and_rain"], chave: "tempestade-6h", horas: 4, nivel,
       });
     }
     const fortes = ms.filter(m => (m.rajada || 0) >= L.rajada_alerta_kmh);
@@ -223,7 +266,7 @@ async function verificarModelos(est, alertas) {
     const raj2h = Math.max(...m.wind_gusts_10m.map(v => v || 0));
     const temp2h = m.weather_code.some(c => c >= 95);
     res.agora = { chuva2h, raj2h, temp2h };
-    if (chuva2h >= L.chuva_2h_mm && podeEnviar(est, "chuva-2h", 2)) alertas.push({ titulo: `🌧️ Chuva forte nas próximas 2 h`, mensagem: `Previsão de ${fmt(chuva2h)} mm em ${CFG.cidade} nas próximas 2 horas${temp2h ? ", com raios" : ""}. Risco de alagamentos.`, prioridade: 4, tags: ["cloud_with_rain"], chave: "chuva-2h", horas: 2 });
+    if (chuva2h >= L.chuva_2h_mm && podeEnviar(est, "chuva-2h", 2)) alertas.push({ titulo: `🌧️ Chuva forte nas próximas 2 h`, mensagem: `Previsão de ${fmt(chuva2h)} mm em ${CFG.cidade} nas próximas 2 horas${temp2h ? ", com raios" : ""}. Risco de alagamentos.`, prioridade: 5, tags: ["cloud_with_rain"], chave: "chuva-2h", horas: 2 });
     if (raj2h >= L.rajada_alerta_kmh && podeEnviar(est, "vento-2h", 2)) alertas.push({ titulo: `💨 Rajadas fortes nas próximas 2 h`, mensagem: `Rajadas de até ${fmt(raj2h)} km/h previstas em ${CFG.cidade}.`, prioridade: 4, tags: ["dash"], chave: "vento-2h", horas: 2 });
   } catch (e) { log("Previsão de 15 min indisponível: " + e.message); }
   return res;
@@ -248,7 +291,7 @@ async function verificarDia(est, alertas, avisos) {
       alertas.push({
         titulo: `☀️ Bom dia! Tempo hoje em ${CFG.cidade}`,
         mensagem: `${fmt(d.temperature_2m_min[0])}° a ${fmt(d.temperature_2m_max[0])}° · chuva ${fmt(d.precipitation_sum[0])} mm (${fmt(d.precipitation_probability_max[0])}%) · umidade mín. ${fmt(d.relative_humidity_2m_min[0])}%.\nAvisos: ${txtAv}.\nAbra o painel para gerar os cards do dia.`,
-        prioridade: 2, tags: ["sunrise"], resumo: hoje,
+        prioridade: 3, tags: ["sunrise"], resumo: hoje,
       });
     }
   } catch (e) { log("Previsão diária indisponível: " + e.message); }
@@ -256,7 +299,7 @@ async function verificarDia(est, alertas, avisos) {
 
 async function principal() {
   if (ARGS.includes("--teste")) {
-    await enviar({ titulo: "✅ Teste: alertas de Jaborandi funcionando", mensagem: "Você vai receber aqui os avisos do INMET e da Defesa Civil, chuva vista pelo radar, riscos de tempestade, ventos fortes, calor e ar seco.", prioridade: 3, tags: ["white_check_mark"] });
+    await enviar({ titulo: "✅ Teste: alertas de Jaborandi funcionando", mensagem: "Se este aviso tocou alto, o celular está pronto. Alertas urgentes (Defesa Civil, chuva chegando, chuva forte) chegam assim.", prioridade: 5, tags: ["white_check_mark"] });
     return;
   }
   const est = lerEstado();
@@ -276,6 +319,7 @@ async function principal() {
       if (SO_VER) continue;
       if (a.marcarAviso) est.avisosVistos.push(a.marcarAviso);
       if (a.marcarDC) est.dcVistos.push(a.marcarDC);
+      if (a.radarEstado) est.radar = a.radarEstado;
       if (a.chave) marcar(est, a.chave, a.nivel || 0);
       if (a.resumo) est.ultimoResumo = a.resumo;
     } catch (e) {
