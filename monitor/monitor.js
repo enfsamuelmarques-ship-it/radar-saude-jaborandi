@@ -70,6 +70,9 @@ const quando = a => {
 
 async function enviar({ titulo, mensagem, prioridade = 3, tags = [] }) {
   if (SO_VER) { log(`(só ver) ALERTA p${prioridade}: ${titulo} | ${mensagem.replace(/\n/g, " / ")}`); return; }
+  // avisos pausados (config "alertas_pausados"): o monitor continua verificando e atualizando o painel,
+  // mas não manda nada para o celular. Conta como enviado, para não chegar tudo de uma vez ao despausar.
+  if (CFG.alertas_pausados && !ARGS.includes("--teste")) { log(`PAUSADO (não enviado) p${prioridade}: ${titulo}`); return; }
   // teto de prioridade (config "prioridade_maxima"): 4 deixa de usar o alerta máximo, que pode tocar sem parar no celular
   prioridade = Math.min(prioridade, CFG.prioridade_maxima || 5);
   const corpo = { topic: CFG.ntfy_topico, title: titulo, message: mensagem, priority: prioridade, tags, click: CFG.link_ao_tocar };
