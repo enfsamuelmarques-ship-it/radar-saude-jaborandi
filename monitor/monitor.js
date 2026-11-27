@@ -70,6 +70,8 @@ const quando = a => {
 
 async function enviar({ titulo, mensagem, prioridade = 3, tags = [] }) {
   if (SO_VER) { log(`(só ver) ALERTA p${prioridade}: ${titulo} | ${mensagem.replace(/\n/g, " / ")}`); return; }
+  // teto de prioridade (config "prioridade_maxima"): 4 deixa de usar o alerta máximo, que pode tocar sem parar no celular
+  prioridade = Math.min(prioridade, CFG.prioridade_maxima || 5);
   const corpo = { topic: CFG.ntfy_topico, title: titulo, message: mensagem, priority: prioridade, tags, click: CFG.link_ao_tocar };
   // O ntfy.sh limita pedidos por endereço IP, e os servidores do GitHub são compartilhados:
   // em caso de "muitos pedidos" (429) ou falha do servidor, espera e tenta de novo.

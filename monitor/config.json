@@ -15,5 +15,6 @@
     "umidade_baixa_pct": 20,
     "radar_faixas_km": [12, 30, 60]
   },
-  "resumo_diario_hora": 6
+  "resumo_diario_hora": 6,
+  "prioridade_maxima": 4
 }
