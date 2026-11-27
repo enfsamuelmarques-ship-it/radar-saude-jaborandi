@@ -168,6 +168,9 @@ function zonaRadar(r) {
   return km <= z3 ? 3 : km <= z2 ? 2 : km <= z1 ? 1 : 0;
 }
 const forcaChuva = s => /muito forte/.test(s || "") ? 3 : /forte/.test(s || "") ? 2 : s ? 1 : 0;
+// Só apita chuva com potencial forte: muito forte = máxima (como a Defesa Civil), moderada a forte = alta.
+// Chuva fraca e "a chuva passou" chegam em silêncio (prioridade 2: aparece no celular, sem som).
+const prioridadeChuva = forca => forca >= 3 ? 5 : forca >= 2 ? 4 : 2;
 function avisarMudancaRadar(est, alertas, r) {
   const ant = est.radar || { zona: 0, forca: 0, pendente: null };
   const zona = zonaRadar(r), p = r.maisProxima;
@@ -181,28 +184,28 @@ function avisarMudancaRadar(est, alertas, r) {
   if (zona > ant.zona) {
     // chuva chegou mais perto
     if (zona === 4) a = { titulo: forca >= 2 ? "🌧️ Começou a chover forte em Jaborandi" : "🌦️ Começou a chover em Jaborandi",
-      mensagem: `O radar mostra chuva ${r.intensidadeEmJaborandi} sobre a cidade${forca >= 2 ? ". Atenção a alagamentos e raios" : ""}.`, prioridade: forca >= 2 ? 5 : 4, tags: ["cloud_with_rain"] };
+      mensagem: `O radar mostra chuva ${r.intensidadeEmJaborandi} sobre a cidade${forca >= 2 ? ". Atenção a alagamentos e raios" : ""}.`, prioridade: prioridadeChuva(forca), tags: ["cloud_with_rain"] };
     else if (zona === 3) a = { titulo: `⚠️ Chuva chegando: ${p.km} km de Jaborandi`,
-      mensagem: `Chuva ${p.intensidade} ${onde}${tend}. Pode começar a chover na cidade em breve.`, prioridade: forca >= 2 ? 5 : 4, tags: ["umbrella"] };
+      mensagem: `Chuva ${p.intensidade} ${onde}${tend}. Pode começar a chover na cidade em breve.`, prioridade: prioridadeChuva(forca), tags: ["umbrella"] };
     else if (zona === 2) a = { titulo: `🌧️ Chuva a ${p.km} km de Jaborandi`,
-      mensagem: `Chuva ${p.intensidade} ${onde}${tend}.`, prioridade: forca >= 2 || r.tendencia === "se aproximando" ? 4 : 3, tags: ["cloud_with_rain"] };
+      mensagem: `Chuva ${p.intensidade} ${onde}${tend}.`, prioridade: prioridadeChuva(forca), tags: ["cloud_with_rain"] };
     else a = { titulo: `📡 Chuva no radar a ${p.km} km`,
-      mensagem: `Chuva ${p.intensidade} ${onde}${tend}. Ainda longe de Jaborandi.`, prioridade: 3, tags: ["satellite"] };
+      mensagem: `Chuva ${p.intensidade} ${onde}${tend}. Ainda longe de Jaborandi.`, prioridade: 2, tags: ["satellite"] };
     novo = { zona, forca, pendente: null };
   } else if (zona >= 2 && zona === ant.zona && forca > (ant.forca || 0)) {
     // mesma distância, mas a chuva ficou mais forte
     a = { titulo: zona === 4 ? "⛈️ A chuva ficou mais forte em Jaborandi" : `⛈️ Chuva mais forte a ${p.km} km`,
-      mensagem: `Agora a chuva está ${zona === 4 ? r.intensidadeEmJaborandi + " sobre a cidade" : p.intensidade + " " + onde + tend}.`, prioridade: 5, tags: ["cloud_with_lightning_and_rain"] };
+      mensagem: `Agora a chuva está ${zona === 4 ? r.intensidadeEmJaborandi + " sobre a cidade" : p.intensidade + " " + onde + tend}.`, prioridade: prioridadeChuva(forca), tags: ["cloud_with_lightning_and_rain"] };
     novo = { zona, forca, pendente: null };
   } else if (zona < ant.zona) {
     // melhorou: confirma na leitura seguinte
     if (ant.pendente != null && ant.pendente >= zona) {
       if (ant.zona === 4) a = { titulo: "✅ Parou de chover em Jaborandi",
-        mensagem: `O radar não mostra mais chuva sobre a cidade. Agora: ${zona ? `chuva ${p.intensidade} ${onde}${tend}` : ZONA_TXT[0]}.`, prioridade: 3, tags: ["white_check_mark"] };
+        mensagem: `O radar não mostra mais chuva sobre a cidade. Agora: ${zona ? `chuva ${p.intensidade} ${onde}${tend}` : ZONA_TXT[0]}.`, prioridade: 2, tags: ["white_check_mark"] };
       else if (zona === 0) a = { titulo: "✅ A chuva se afastou de Jaborandi",
-        mensagem: "O radar não mostra chuva num raio de 60 km.", prioridade: 3, tags: ["white_check_mark"] };
+        mensagem: "O radar não mostra chuva num raio de 60 km.", prioridade: 2, tags: ["white_check_mark"] };
       else if (ant.zona >= 3) a = { titulo: `↘️ A chuva se afastou: agora a ${p.km} km`,
-        mensagem: `Chuva ${p.intensidade} ${onde}${tend}.`, prioridade: 3, tags: ["arrow_lower_right"] };
+        mensagem: `Chuva ${p.intensidade} ${onde}${tend}.`, prioridade: 2, tags: ["arrow_lower_right"] };
       novo = { zona, forca, pendente: null };
     } else novo = { ...ant, pendente: zona };
   } else novo = { zona, forca: Math.max(forca, zona === ant.zona ? ant.forca || 0 : 0), pendente: null };
@@ -299,7 +302,7 @@ async function verificarDia(est, alertas, avisos) {
 
 async function principal() {
   if (ARGS.includes("--teste")) {
-    await enviar({ titulo: "✅ Teste: alertas de Jaborandi funcionando", mensagem: "Se este aviso tocou alto, o celular está pronto. Alertas urgentes (Defesa Civil, chuva chegando, chuva forte) chegam assim.", prioridade: 5, tags: ["white_check_mark"] });
+    await enviar({ titulo: "✅ Teste: alertas de Jaborandi funcionando", mensagem: "Se este aviso tocou alto, o celular está pronto. Alertas urgentes (Defesa Civil, chuva muito forte) chegam assim. Chuva fraca chega em silêncio.", prioridade: 5, tags: ["white_check_mark"] });
     return;
   }
   const est = lerEstado();
