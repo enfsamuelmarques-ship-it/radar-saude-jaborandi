@@ -1,0 +1,98 @@
+{
+  "avisosVistos": [
+    "urn:oid:2.49.0.0.76.0.2026.28772.1",
+    "urn:oid:2.49.0.0.76.0.2026.28777.1",
+    "urn:oid:2.49.0.0.76.0.2026.28778.1",
+    "urn:oid:2.49.0.0.76.0.2026.28779.1",
+    "urn:oid:2.49.0.0.76.0.2026.28780.1"
+  ],
+  "enviados": {
+    "tempestade-6h": {
+      "t": 1795838514010,
+      "nivel": 1
+    },
+    "radar-aprox": {
+      "t": 1795684838307,
+      "nivel": 1
+    },
+    "falha-inmet": {
+      "t": 1795837316509,
+      "nivel": 0
+    }
+  },
+  "ultimoResumo": "2026-11-28",
+  "falhasInmet": 66,
+  "avisosAtivos": [
+    {
+      "descricao": "Chuvas Intensas",
+      "severidade": "Perigo Potencial",
+      "inicio": "2026-11-27 09:12",
+      "fim": "2026-11-27 23:59"
+    },
+    {
+      "descricao": "Chuvas Intensas",
+      "severidade": "Perigo Potencial",
+      "inicio": "2026-11-28 00:00",
+      "fim": "2026-11-28 23:59"
+    },
+    {
+      "descricao": "Chuvas Intensas",
+      "severidade": "Perigo Potencial",
+      "inicio": "2026-11-29 00:00",
+      "fim": "2026-11-29 23:59"
+    },
+    {
+      "descricao": "Acumulado de Chuva",
+      "severidade": "Perigo",
+      "inicio": "2026-11-29 00:00",
+      "fim": "2026-11-29 23:59"
+    },
+    {
+      "descricao": "Tempestade",
+      "severidade": "Perigo Potencial",
+      "inicio": "2026-11-30 00:00",
+      "fim": "2026-11-30 23:59"
+    }
+  ],
+  "ultimaVerificacao": "2026-11-28T13:21:23.748Z",
+  "modelos": {
+    "modelos": [
+      {
+        "nome": "ECMWF (Europa)",
+        "tempestade": false,
+        "rajada": 46.4,
+        "chuva": 0.6
+      },
+      {
+        "nome": "GFS (NOAA/EUA)",
+        "tempestade": false,
+        "rajada": 31,
+        "chuva": 0.8
+      },
+      {
+        "nome": "ICON (Alemanha)",
+        "tempestade": false,
+        "rajada": 33.8,
+        "chuva": 0.6
+      },
+      {
+        "nome": "UK Met Office",
+        "tempestade": true,
+        "rajada": 34.6,
+        "chuva": 13.100000000000001
+      }
+    ],
+    "agora": {
+      "chuva2h": 0,
+      "raj2h": 46.8,
+      "temp2h": false
+    }
+  },
+  "dcVistos": [],
+  "falhasDC": 0,
+  "radar": {
+    "zona": 0,
+    "forca": 0,
+    "pendente": null
+  }
+}
